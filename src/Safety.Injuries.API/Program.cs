@@ -44,8 +44,6 @@ builder.Services.AddCustomJWTAuthentification();
 //    });
 //});
 
-
-
 var app = builder.Build();
 
 // Configure the HTTP request pipeline
@@ -65,7 +63,6 @@ app.UseMiddleware<ExceptionMiddleware>();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
-
 
 try
 {
@@ -92,8 +89,5 @@ catch (Exception ex)
     // Логируем ошибку, но даем приложению (и сборщику миграций) жить дальше
     Console.WriteLine($"Database initialization failed: {ex.Message}");
 }
-
-
-
 
 app.Run();

@@ -8,5 +8,4 @@ public interface IInjuryRepository : IRepository<Injury>
     /// Получить самую последнюю травму (по дате происшествия)
     /// </summary>
     Task<Injury?> GetLatestAsync();
-
 }

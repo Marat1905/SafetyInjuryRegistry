@@ -4,6 +4,7 @@ using Safety.Injuries.Infrastructure.Data;
 using System.Linq.Expressions;
 
 namespace Safety.Injuries.Infrastructure.Common;
+
 public abstract class BaseRepository<T> : IRepository<T> where T : class
 {
     protected readonly SafetyInjuriesDbContext _context;

@@ -1,6 +1,7 @@
 ﻿using System.Linq.Expressions;
 
 namespace Safety.Injuries.Domain.Interfaces;
+
 public interface IRepository<T> where T : class
 {
     Task<T> GetByIdAsync(Guid id);
@@ -11,4 +12,3 @@ public interface IRepository<T> where T : class
     Task DeleteAsync(T entity);
     Task<bool> ExistsAsync(Guid id);
 }
-

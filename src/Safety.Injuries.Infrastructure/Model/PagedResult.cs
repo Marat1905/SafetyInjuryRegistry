@@ -1,4 +1,5 @@
 ﻿namespace Safety.Injuries.Infrastructure.Model;
+
 public class PagedResult<T>
 {
     public IEnumerable<T> Items { get; set; }
@@ -7,4 +8,3 @@ public class PagedResult<T>
     public int PageSize { get; set; }
     public int TotalPages { get; set; }
 }
-

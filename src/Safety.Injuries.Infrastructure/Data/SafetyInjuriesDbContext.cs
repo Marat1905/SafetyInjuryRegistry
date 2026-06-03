@@ -3,7 +3,6 @@ using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Safety.Injuries.Domain.Entities;
 using Safety.Injuries.Infrastructure.Configurations;
 
-
 namespace Safety.Injuries.Infrastructure.Data;
 
 public class SafetyInjuriesDbContext : DbContext

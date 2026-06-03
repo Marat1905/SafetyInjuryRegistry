@@ -21,7 +21,7 @@ public class InjuryService : IInjuryService
     {
         // Используем FindAsync с фильтром по году и месяцу (UTC)
         var injuries = await _repository.FindAsync(i =>
-            i.Date.Year == year && i.Date.Month == month && !i.IsDeleted);
+            i.Date.Year == year && i.Date.Month == month);
 
         return _mapper.Map<IEnumerable<InjuryDto>>(injuries);
     }
@@ -29,7 +29,7 @@ public class InjuryService : IInjuryService
     public async Task<IEnumerable<InjuryDto>> GetByYearAsync(int year)
     {
         var injuries = await _repository.FindAsync(i =>
-            i.Date.Year == year && !i.IsDeleted);
+            i.Date.Year == year);
 
         return _mapper.Map<IEnumerable<InjuryDto>>(injuries);
     }
@@ -49,7 +49,6 @@ public class InjuryService : IInjuryService
         var injury = _mapper.Map<Injury>(request);
         injury.Date = DateTime.SpecifyKind(parsedDate.Date, DateTimeKind.Utc); // только дата, UTC
         injury.CreatedAt = DateTime.UtcNow;
-        injury.IsDeleted = false;
 
         var created = await _repository.AddAsync(injury);
         return _mapper.Map<InjuryDto>(created);
@@ -58,7 +57,7 @@ public class InjuryService : IInjuryService
     public async Task<InjuryDto> UpdateAsync(Guid id, UpdateInjuryRequest request)
     {
         var existing = await _repository.GetByIdAsync(id);
-        if (existing == null || existing.IsDeleted)
+        if (existing == null)
             throw new KeyNotFoundException($"Травма с id {id} не найдена");
 
         // Маппим обновляемые поля
@@ -72,13 +71,10 @@ public class InjuryService : IInjuryService
     public async Task DeleteAsync(Guid id)
     {
         var existing = await _repository.GetByIdAsync(id);
-        if (existing == null || existing.IsDeleted)
+        if (existing == null)
             throw new KeyNotFoundException($"Травма с id {id} не найдена");
 
-        // Мягкое удаление
-        existing.IsDeleted = true;
-        existing.UpdatedAt = DateTime.UtcNow;
-
-        await _repository.UpdateAsync(existing); // или реализовать DeleteAsync с soft-delete
+        // Физическое удаление
+        await _repository.DeleteAsync(existing);
     }
 }

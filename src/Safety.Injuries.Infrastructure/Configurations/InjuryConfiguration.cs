@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using Safety.Injuries.Domain.Entities;
 
 namespace Safety.Injuries.Infrastructure.Configurations;
+
 public class InjuryConfiguration : IEntityTypeConfiguration<Injury>
 {
     public void Configure(EntityTypeBuilder<Injury> builder)
