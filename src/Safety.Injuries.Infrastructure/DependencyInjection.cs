@@ -16,7 +16,8 @@ public static class DependencyInjection
 
         // Основные репозитории
         services.AddScoped<IInjuryRepository, InjuryRepository>();
-
+        services.AddScoped<IInjuryFileRepository, InjuryFileRepository>();
+        
         return services;
     }
 }

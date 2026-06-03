@@ -13,10 +13,12 @@ public class SafetyInjuriesDbContext : DbContext
     }
 
     public DbSet<Injury> Injuries { get; set; }
+    public DbSet<InjuryFile> InjuryFiles { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfiguration(new InjuryConfiguration());
+        modelBuilder.ApplyConfiguration(new InjuryFileConfiguration());
 
         // Конфигурация для автоматического преобразования DateTime в UTC
         ConfigureDateTimeProperties(modelBuilder);

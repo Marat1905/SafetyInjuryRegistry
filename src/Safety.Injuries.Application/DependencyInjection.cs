@@ -12,6 +12,7 @@ public static class DependencyInjection
             // настройки если нужны
         }, AppDomain.CurrentDomain.GetAssemblies());
         services.AddScoped<IInjuryService, InjuryService>();
+        services.AddScoped<IInjuryFileService, InjuryFileService>();
         return services;
     }
 }

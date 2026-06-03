@@ -18,5 +18,11 @@ public class InjuryConfiguration : IEntityTypeConfiguration<Injury>
             .HasMaxLength(500);
         builder.Property(i => i.Date)
             .IsRequired();
+
+        // Настройка связи один-ко-многим с InjuryFile
+        builder.HasMany(i => i.Files)
+            .WithOne(f => f.Injury)
+            .HasForeignKey(f => f.InjuryId)
+            .OnDelete(DeleteBehavior.Cascade); // При удалении травмы удаляются и файлы
     }
 }

@@ -14,5 +14,10 @@ public class MappingProfile : Profile
 
         CreateMap<CreateInjuryRequest, Injury>();
         CreateMap<UpdateInjuryRequest, Injury>();
+
+        // Маппинг для файлов
+        CreateMap<InjuryFile, InjuryFileDto>()
+            .ForMember(dest => dest.CreatedAt,
+                opt => opt.MapFrom(src => src.CreatedAt));
     }
 }
