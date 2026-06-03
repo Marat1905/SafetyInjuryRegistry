@@ -1,0 +1,56 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: safety_injuries_db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: SafetyInjuriesDb
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - safety_injuries_net
+
+  api:
+    build:
+      context: .
+      dockerfile: src/Safety.Injuries.API/Dockerfile
+    container_name: safety_injuries_api
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_HTTP_PORTS=8080
+      - ConnectionStrings__DefaultConnection=Host=postgres;Port=5432;Database=SafetyInjuriesDb;Username=postgres;Password=postgres
+    ports:
+      - "5000:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - safety_injuries_net
+
+  # UI (React) – раскомментируйте, если нужен
+  # ui:
+  #   build:
+  #     context: ./client
+  #     dockerfile: Dockerfile
+  #   container_name: safety_injuries_ui
+  #   ports:
+  #     - "3000:80"
+  #   depends_on:
+  #     - api
+  #   networks:
+  #     - safety_injuries_net
+
+volumes:
+  postgres_data:
+
+networks:
+  safety_injuries_net:
+    driver: bridge

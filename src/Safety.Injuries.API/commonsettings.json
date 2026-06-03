@@ -1,0 +1,18 @@
+{
+  "Authorization": {
+    "JwtBearerOptions": {
+      "RequireHttpsMetadata": "false",
+      "ValidateIssuer": "true",
+      "ValidateAudience": "true",
+      "ValidateLifetime": "true",
+      "ValidateIssuerSigningKey": "true"
+    },
+    "AdditionalOptions": {
+      "Issuer": "Uchaly.Identity",
+      "Audience": "Uchaly.Clients",
+      "Key": "mysupersecret_secretkey!123456789",
+      "LifeTime": "60",
+      "RefreshTokenTime": "1440"
+    }
+  }
+}
