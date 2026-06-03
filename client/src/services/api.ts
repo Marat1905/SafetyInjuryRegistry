@@ -1,11 +1,5 @@
 import axios from 'axios';
 import type { InjuryDto, CreateInjuryRequest, UpdateInjuryRequest } from '../types/index';
-import {
-    requestInterceptor,
-    requestErrorInterceptor,
-    responseInterceptor,
-    responseErrorInterceptor
-} from './axiosInterceptors'; // Убедитесь, что путь к интерцепторам корректен
 
 const API_BASE_URL = '/api';
 
@@ -17,7 +11,64 @@ const apiClient = axios.create({
     },
 });
 
-// Применяем интерцепторы (аутентификация, обработка ошибок и т.д.)
+// ----------------------------------------------------------------------
+// Интерцепторы запросов
+// ----------------------------------------------------------------------
+
+/**
+ * Request interceptor: добавляет токен авторизации из localStorage
+ */
+const requestInterceptor = (config: any) => {
+    const token = localStorage.getItem('access_token');
+    if (token) {
+        config.headers = config.headers || {};
+        config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+};
+
+const requestErrorInterceptor = (error: any) => {
+    console.error('[API Request Error]', error);
+    return Promise.reject(error);
+};
+
+// ----------------------------------------------------------------------
+// Интерцепторы ответов
+// ----------------------------------------------------------------------
+
+/**
+ * Response interceptor: обрабатывает успешные ответы
+ */
+const responseInterceptor = (response: any) => {
+    return response;
+};
+
+/**
+ * Response error interceptor: обрабатывает ошибки (401, 403, 500 и т.д.)
+ */
+const responseErrorInterceptor = (error: any) => {
+    if (error.response) {
+        const { status, data } = error.response;
+        if (status === 401) {
+            // Неавторизован – очищаем токен и перенаправляем на страницу входа
+            localStorage.removeItem('access_token');
+            window.location.href = '/login';
+        } else if (status === 403) {
+            console.error('Доступ запрещён', data);
+        } else if (status === 404) {
+            console.warn('Ресурс не найден', data);
+        } else {
+            console.error(`Ошибка сервера (${status}):`, data);
+        }
+    } else if (error.request) {
+        console.error('Сервер не отвечает:', error.request);
+    } else {
+        console.error('Ошибка при настройке запроса:', error.message);
+    }
+    return Promise.reject(error);
+};
+
+// Применяем интерцепторы
 apiClient.interceptors.request.use(requestInterceptor, requestErrorInterceptor);
 apiClient.interceptors.response.use(responseInterceptor, responseErrorInterceptor);
 
@@ -46,7 +97,9 @@ export const safetyService = {
         return response.data;
     },
 
-    // Новый метод – получение самой последней травмы
+    /**
+     * Получить самую последнюю травму
+     */
     async getLatest(): Promise<InjuryDto | null> {
         try {
             const response = await apiClient.get<InjuryDto>('/safety/injuries/latest');

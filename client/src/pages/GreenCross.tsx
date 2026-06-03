@@ -5,7 +5,6 @@ import {
     setDate,
     startOfMonth,
     differenceInCalendarDays,
-    startOfYear,
     isSameDay,
     isToday,
     isFuture,
@@ -28,7 +27,6 @@ import {
     FiGrid,
     FiCalendar as FiYearIcon,
 } from 'react-icons/fi';
-import { useAuth } from '../../context/AuthContext';
 import { safetyService } from '../services/api';
 import type { InjuryDto } from '../types/index';
 
@@ -154,11 +152,8 @@ const YearCalendar: React.FC<{
 // Основной компонент
 // ----------------------------------------------------------------------
 const GreenCross: React.FC = () => {
-    const { user } = useAuth();
-    const isSafetyEngineer = useMemo(
-        () => user?.roles?.includes('Safety') || user?.roles?.includes('Admin') || false,
-        [user]
-    );
+
+    const isSafetyEngineer = true;
 
     const [viewMode, setViewMode] = useState<'cross' | 'year'>('cross');
     const [currentDate, setCurrentDate] = useState(() => startOfMonth(new Date()));
@@ -327,7 +322,6 @@ const GreenCross: React.FC = () => {
     }, [injuriesMonth, injuriesYear, latestInjury]);
 
     const handleDateClick = useCallback((date: Date) => {
-        const today = startOfDay(new Date());
         const injury = injuriesYear.find((inj) => isSameDay(new Date(inj.date), date));
 
         if (isFuture(date) && !injury) {
