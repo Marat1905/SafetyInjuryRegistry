@@ -30,3 +30,23 @@ export interface UpdateInjuryRequest {
     /** Описание */
     description: string;
 }
+
+/**
+ * Информация о файле, прикреплённом к травме
+ */
+export interface InjuryFileDto {
+    /** Идентификатор файла */
+    id: string;
+    /** Идентификатор травмы */
+    injuryId: string;
+    /** Оригинальное имя файла */
+    fileName: string;
+    /** MIME-тип */
+    contentType: string;
+    /** Размер в байтах */
+    size: number;
+    /** Описание файла (необязательно) */
+    description?: string;
+    /** Дата загрузки */
+    createdAt: string; // ISO строка
+}
