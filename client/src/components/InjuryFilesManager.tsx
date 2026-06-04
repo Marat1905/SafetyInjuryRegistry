@@ -1,3 +1,4 @@
+// InjuryFilesManager.tsx
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
     FiDownload,
@@ -60,7 +61,7 @@ interface InjuryFilesManagerProps {
 }
 
 // ----------------------------------------------------------------------
-// Компонент
+// Компонент менеджера файлов – новая вёрстка: drag‑and‑drop слева, файлы справа
 // ----------------------------------------------------------------------
 const InjuryFilesManager: React.FC<InjuryFilesManagerProps> = ({ injuryId, isEditable }) => {
     const [files, setFiles] = useState<InjuryFileDto[]>([]);
@@ -191,11 +192,9 @@ const InjuryFilesManager: React.FC<InjuryFilesManagerProps> = ({ injuryId, isEdi
         );
 
         for (const item of pendingItems) {
-            // Обновляем прогресс для текущего файла (можно симулировать, но мы не знаем реальный прогресс)
+            // Симуляция прогресса (можно улучшить при реальной поддержке upload progress)
             setUploadQueue((prev) =>
-                prev.map((q) =>
-                    q.id === item.id ? { ...q, progress: 30 } : q
-                )
+                prev.map((q) => (q.id === item.id ? { ...q, progress: 30 } : q))
             );
 
             try {
@@ -282,113 +281,128 @@ const InjuryFilesManager: React.FC<InjuryFilesManagerProps> = ({ injuryId, isEdi
     }
 
     return (
-        <div className="space-y-5">
-            {/* Заголовок и счётчик файлов */}
-            <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-gray-700 dark:text-gray-300">
-                    <FiPaperclip className="w-4 h-4" />
-                    <span className="text-sm font-medium">Прикреплённые файлы</span>
-                    {files.length > 0 && (
-                        <span className="text-xs bg-gray-200 dark:bg-gray-700 px-2 py-0.5 rounded-full">
-                            {files.length}
-                        </span>
-                    )}
-                </div>
-                {isEditable && files.length > 0 && (
-                    <button
-                        onClick={() => fileInputRef.current?.click()}
-                        className="text-xs text-green-600 dark:text-green-400 hover:underline flex items-center gap-1"
-                    >
-                        <FiUpload className="w-3 h-3" /> Добавить
-                    </button>
-                )}
-            </div>
-
-            {/* Список уже загруженных файлов */}
-            {files.length === 0 ? (
-                <div className="text-center py-6 text-gray-400 dark:text-gray-500 text-sm border border-dashed border-gray-200 dark:border-gray-700 rounded-xl bg-gray-50 dark:bg-gray-800/30">
-                    Нет прикреплённых файлов
-                </div>
-            ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-64 overflow-y-auto custom-scrollbar pr-1">
-                    {files.map((file) => (
-                        <div
-                            key={file.id}
-                            className="group flex items-center gap-3 p-2 bg-gray-50 dark:bg-gray-800/50 rounded-xl border border-gray-100 dark:border-gray-700 hover:shadow-sm transition-all"
-                        >
-                            <div className="flex-shrink-0">{getFileIcon(file.contentType)}</div>
-                            <div className="flex-1 min-w-0">
-                                <div className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate" title={file.fileName}>
-                                    {file.fileName}
+        <div className="space-y-4">
+            <div className="flex flex-col md:flex-row gap-6">
+                {/* ЛЕВАЯ КОЛОНКА: компактная зона drag-and-drop (только для редактирования) */}
+                {isEditable && (
+                    <div className="md:w-1/3">
+                        <div className="bg-gray-50 dark:bg-gray-800/40 rounded-xl p-4 border border-dashed border-gray-300 dark:border-gray-600">
+                            <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2">
+                                <FiUpload className="w-4 h-4" /> Добавить файлы
+                            </h4>
+                            <div
+                                onDragEnter={handleDragEnter}
+                                onDragLeave={handleDragLeave}
+                                onDragOver={handleDragOver}
+                                onDrop={handleDrop}
+                                onClick={() => fileInputRef.current?.click()}
+                                className={`
+                                    relative rounded-lg border-2 border-dashed transition-all cursor-pointer
+                                    ${isDragging
+                                        ? 'border-green-500 bg-green-50 dark:bg-green-900/20'
+                                        : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700'
+                                    }
+                                `}
+                            >
+                                <input
+                                    ref={fileInputRef}
+                                    type="file"
+                                    multiple
+                                    accept="image/jpeg,image/jpg,image/png,application/pdf"
+                                    onChange={handleFileSelect}
+                                    className="hidden"
+                                />
+                                <div className="flex flex-col items-center justify-center py-6 px-3">
+                                    <FiUpload className={`w-6 h-6 mb-2 ${isDragging ? 'text-green-500' : 'text-gray-400'}`} />
+                                    <p className="text-xs text-gray-600 dark:text-gray-300 text-center">
+                                        {isDragging ? 'Отпустите файлы' : 'Перетащите или кликните'}
+                                    </p>
+                                    <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1 text-center">
+                                        JPEG, PNG, PDF до 10 МБ
+                                    </p>
                                 </div>
-                                <div className="flex flex-wrap gap-2 text-xs text-gray-500 dark:text-gray-400">
-                                    <span>{formatFileSize(file.size)}</span>
-                                    <span>•</span>
-                                    <span>{formatDate(file.createdAt)}</span>
-                                </div>
-                                {file.description && (
-                                    <div className="text-xs text-gray-400 dark:text-gray-500 truncate">{file.description}</div>
-                                )}
                             </div>
-                            <div className="flex items-center gap-1 opacity-70 group-hover:opacity-100 transition">
-                                <button
-                                    onClick={() => handleDownload(file)}
-                                    className="p-1.5 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700"
-                                    title="Скачать"
-                                >
-                                    <FiDownload className="w-4 h-4 text-gray-600 dark:text-gray-300" />
-                                </button>
-                                {isEditable && (
-                                    <button
-                                        onClick={() => handleDelete(file.id)}
-                                        className="p-1.5 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30"
-                                        title="Удалить"
-                                    >
-                                        <FiTrash2 className="w-4 h-4 text-red-500" />
-                                    </button>
-                                )}
+                            {/* Компактная информация о форматах */}
+                            <div className="text-[11px] text-gray-400 dark:text-gray-500 mt-2 text-center">
+                                Макс. 10 МБ на файл
                             </div>
-                        </div>
-                    ))}
-                </div>
-            )}
-
-            {/* Зона загрузки новых файлов (только для редактирования) */}
-            {isEditable && (
-                <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
-                    {/* Drag & Drop область */}
-                    <div
-                        onDragEnter={handleDragEnter}
-                        onDragLeave={handleDragLeave}
-                        onDragOver={handleDragOver}
-                        onDrop={handleDrop}
-                        className={`relative rounded-xl border-2 border-dashed transition-all cursor-pointer
-                            ${isDragging
-                                ? 'border-green-500 bg-green-50 dark:bg-green-900/20'
-                                : 'border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/30 hover:bg-gray-100 dark:hover:bg-gray-800/50'
-                            }`}
-                        onClick={() => fileInputRef.current?.click()}
-                    >
-                        <input
-                            ref={fileInputRef}
-                            type="file"
-                            multiple
-                            accept="image/jpeg,image/jpg,image/png,application/pdf"
-                            onChange={handleFileSelect}
-                            className="hidden"
-                        />
-                        <div className="flex flex-col items-center justify-center py-6 px-4">
-                            <FiUpload className={`w-8 h-8 mb-2 ${isDragging ? 'text-green-500' : 'text-gray-400'}`} />
-                            <p className="text-sm text-gray-600 dark:text-gray-300 text-center">
-                                {isDragging ? 'Отпустите файлы для загрузки' : 'Перетащите файлы сюда или кликните для выбора'}
-                            </p>
-                            <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-                                JPEG, PNG, PDF до 10 МБ (можно несколько)
-                            </p>
                         </div>
                     </div>
+                )}
 
-                    {/* Очередь на загрузку */}
+                {/* ПРАВАЯ КОЛОНКА: список существующих файлов и очередь загрузки */}
+                <div className={isEditable ? "md:w-2/3" : "w-full"}>
+                    {/* Заголовок с количеством файлов */}
+                    <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                            <FiPaperclip className="w-4 h-4" />
+                            <span className="font-medium">Прикреплённые файлы</span>
+                            {files.length > 0 && (
+                                <span className="text-xs bg-gray-200 dark:bg-gray-700 px-2 py-0.5 rounded-full">
+                                    {files.length}
+                                </span>
+                            )}
+                        </div>
+                        {isEditable && files.length > 0 && (
+                            <button
+                                onClick={() => fileInputRef.current?.click()}
+                                className="text-xs text-green-600 dark:text-green-400 hover:underline flex items-center gap-1"
+                            >
+                                <FiUpload className="w-3 h-3" /> Добавить
+                            </button>
+                        )}
+                    </div>
+
+                    {/* Список уже загруженных файлов */}
+                    {files.length === 0 ? (
+                        <div className="text-center py-6 text-gray-400 dark:text-gray-500 text-sm border border-dashed border-gray-200 dark:border-gray-700 rounded-xl bg-gray-50 dark:bg-gray-800/30">
+                            Нет прикреплённых файлов
+                        </div>
+                    ) : (
+                        <div className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar pr-1">
+                            {files.map((file) => (
+                                <div
+                                    key={file.id}
+                                    className="group flex items-center gap-3 p-2 bg-gray-50 dark:bg-gray-800/50 rounded-xl border border-gray-100 dark:border-gray-700 hover:shadow-sm transition-all"
+                                >
+                                    <div className="flex-shrink-0">{getFileIcon(file.contentType)}</div>
+                                    <div className="flex-1 min-w-0">
+                                        <div className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate" title={file.fileName}>
+                                            {file.fileName}
+                                        </div>
+                                        <div className="flex flex-wrap gap-2 text-xs text-gray-500 dark:text-gray-400">
+                                            <span>{formatFileSize(file.size)}</span>
+                                            <span>•</span>
+                                            <span>{formatDate(file.createdAt)}</span>
+                                        </div>
+                                        {file.description && (
+                                            <div className="text-xs text-gray-400 dark:text-gray-500 truncate">{file.description}</div>
+                                        )}
+                                    </div>
+                                    <div className="flex items-center gap-1 opacity-70 group-hover:opacity-100 transition">
+                                        <button
+                                            onClick={() => handleDownload(file)}
+                                            className="p-1.5 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700"
+                                            title="Скачать"
+                                        >
+                                            <FiDownload className="w-4 h-4 text-gray-600 dark:text-gray-300" />
+                                        </button>
+                                        {isEditable && (
+                                            <button
+                                                onClick={() => handleDelete(file.id)}
+                                                className="p-1.5 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30"
+                                                title="Удалить"
+                                            >
+                                                <FiTrash2 className="w-4 h-4 text-red-500" />
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    {/* Очередь на загрузку (отображается справа внизу) */}
                     {uploadQueue.length > 0 && (
                         <div className="mt-4 space-y-2">
                             <div className="flex justify-between items-center">
@@ -486,7 +500,7 @@ const InjuryFilesManager: React.FC<InjuryFilesManagerProps> = ({ injuryId, isEdi
                         </div>
                     )}
                 </div>
-            )}
+            </div>
         </div>
     );
 };

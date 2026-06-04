@@ -1,3 +1,4 @@
+// GreenCross.tsx (добавлена поддержка категорий происшествий)
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
     format,
@@ -95,7 +96,7 @@ const MonthView: React.FC<{
                             className={`aspect-square flex items-center justify-center rounded-md text-[0.65rem] font-bold text-white ${bgColor} ${todayClass} ${clickable ? 'cursor-pointer hover:scale-105 hover:shadow-md active:scale-95' : 'cursor-not-allowed opacity-70'}`}
                             onClick={() => clickable && onDayClick(date)}
                             disabled={!clickable}
-                            title={injury ? `Тип: ${injury.type}\nОписание: ${injury.description}` : future ? 'Будущий день' : 'Нет травмы'}
+                            title={injury ? `Тип: ${injury.type}\nКатегория: ${injury.category}\nОписание: ${injury.description}` : future ? 'Будущий день' : 'Нет травмы'}
                         >
                             {day}
                         </button>
@@ -269,10 +270,10 @@ const PendingFilesManager: React.FC<{
 };
 
 // ----------------------------------------------------------------------
-// Основной компонент
+// Основной компонент GreenCross
 // ----------------------------------------------------------------------
 const GreenCross: React.FC = () => {
-    const isSafetyEngineer = false;
+    const isSafetyEngineer = true;
 
     const [viewMode, setViewMode] = useState<'cross' | 'year'>('cross');
     const [currentDate, setCurrentDate] = useState(() => startOfMonth(new Date()));
@@ -288,6 +289,7 @@ const GreenCross: React.FC = () => {
     const [modalMode, setModalMode] = useState<'create' | 'edit' | 'view'>('view');
     const [formType, setFormType] = useState('');
     const [formDescription, setFormDescription] = useState('');
+    const [formCategory, setFormCategory] = useState(''); // новое состояние для категории
     const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
     const [creating, setCreating] = useState(false);
 
@@ -424,6 +426,7 @@ const GreenCross: React.FC = () => {
             setSelectedInjury(injury);
             setFormType(injury.type);
             setFormDescription(injury.description);
+            setFormCategory(injury.category); // заполняем категорию
             setModalMode(isSafetyEngineer ? 'edit' : 'view');
             setPendingFiles([]);
         } else {
@@ -431,6 +434,7 @@ const GreenCross: React.FC = () => {
                 setSelectedInjury(null);
                 setFormType('');
                 setFormDescription('');
+                setFormCategory(''); // для новой записи категория пока не выбрана
                 setModalMode('create');
                 setPendingFiles([]);
             } else {
@@ -464,15 +468,29 @@ const GreenCross: React.FC = () => {
         setPendingFiles((prev) => prev.map((f) => (f.id === id ? { ...f, description } : f)));
     };
 
+    // Список категорий для выпадающего списка
+    const categoryOptions = [
+        { value: "Fatality", label: "П1 - Смертельный случай" },
+        { value: "LostWorkdayCase", label: "П2 - Травма с потерей трудоспособности" },
+        { value: "FirstAidCase", label: "П3 - Микротравма" },
+        { value: "AccidentOrNearMiss", label: "П4 - Авария / Near Miss" },
+        { value: "PreventedIncident", label: "П5 - Предотвращенное происшествие" },
+        { value: "ThirdPartyInjury", label: "П6 - Травма третьего лица" }
+    ];
+
     const handleCreate = async () => {
-        if (!selectedDate || !formType.trim() || !formDescription.trim()) return;
+        if (!selectedDate || !formType.trim() || !formDescription.trim() || !formCategory) {
+            alert("Заполните все поля и выберите категорию");
+            return;
+        }
         setCreating(true);
         try {
-            // Создаём травму
+            // Создаём травму с категорией
             const newInjury = await safetyService.create({
                 date: format(selectedDate, 'yyyy-MM-dd'),
                 type: formType,
                 description: formDescription,
+                category: formCategory,
             });
 
             // Обновляем локальные состояния
@@ -511,6 +529,7 @@ const GreenCross: React.FC = () => {
             const updated = await safetyService.update(selectedInjury.id, {
                 type: formType,
                 description: formDescription,
+                category: formCategory !== selectedInjury.category ? formCategory : undefined, // отправляем категорию только если изменилась
             });
             setInjuriesMonth((prev) => prev.map((inj) => (inj.id === updated.id ? updated : inj)));
             setInjuriesYear((prev) => prev.map((inj) => (inj.id === updated.id ? updated : inj)));
@@ -697,7 +716,7 @@ const GreenCross: React.FC = () => {
                                                         key={key}
                                                         className={`aspect-square flex items-center justify-center rounded-xl transition-all duration-200 ${bgColor} ${todayClass} ${dayNumber && !isFutureDate ? 'cursor-pointer hover:scale-105 hover:shadow-lg active:scale-95' : dayNumber && isFutureDate ? 'cursor-not-allowed opacity-70' : 'cursor-default'}`}
                                                         onClick={() => handleCellClick(row, col)}
-                                                        title={hasInjury ? `Тип: ${cell!.injury!.type}\nОписание: ${cell!.injury!.description}` : isFutureDate ? 'Будущий день' : ''}
+                                                        title={hasInjury ? `Тип: ${cell!.injury!.type}\nКатегория: ${cell!.injury!.category}\nОписание: ${cell!.injury!.description}` : isFutureDate ? 'Будущий день' : ''}
                                                         disabled={!dayNumber || isFutureDate}
                                                     >
                                                         {dayNumber && <span className="text-base md:text-lg font-bold text-white drop-shadow-md">{dayNumber}</span>}
@@ -716,19 +735,22 @@ const GreenCross: React.FC = () => {
                 </div>
             </div>
 
-            {/* МОДАЛЬНОЕ ОКНО БЕЗ ВКЛАДОК — ИНФОРМАЦИЯ И ФАЙЛЫ ВМЕСТЕ */}
+            {/* МОДАЛЬНОЕ ОКНО: для режима просмотра (view) — вертикальное расположение, для create/edit — две колонки */}
             {modalOpen && (
                 <div
                     className="fixed inset-0 bg-black/60 dark:bg-gray-900/80 flex items-center justify-center p-4 z-50 backdrop-blur-sm transition-opacity"
                     onClick={closeModal}
                 >
                     <div
-                        className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-5xl flex flex-col max-h-[90vh]"
+                        className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-6xl flex flex-col max-h-[90vh]"
                         onClick={(e) => e.stopPropagation()}
                     >
                         {/* Заголовок — фиксированная верхняя часть */}
                         <div className="flex justify-between items-center p-5 border-b border-gray-200 dark:border-gray-700 sticky top-0 bg-white dark:bg-gray-800 z-10 rounded-t-2xl">
-                            <h3 className="text-xl font-semibold text-gray-800 dark:text-white">
+                            <h3 className="text-xl font-semibold text-gray-800 dark:text-white flex items-center gap-2">
+                                {modalMode === 'create' && <FiPlus className="text-green-500" />}
+                                {modalMode === 'edit' && <FiActivity className="text-blue-500" />}
+                                {modalMode === 'view' && <FiPaperclip className="text-gray-500" />}
                                 {modalMode === 'create' && 'Добавить травму'}
                                 {modalMode === 'edit' && 'Редактировать травму'}
                                 {modalMode === 'view' && 'Информация о травме'}
@@ -741,73 +763,133 @@ const GreenCross: React.FC = () => {
                             </button>
                         </div>
 
-                        {/* Содержимое — с прокруткой */}
-                        <div className="flex-1 overflow-y-auto p-5 space-y-5 custom-scrollbar">
-                            {/* Поля информации о травме */}
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Дата</label>
-                                <input
-                                    type="text"
-                                    value={selectedDate ? format(selectedDate, 'dd.MM.yyyy') : ''}
-                                    disabled
-                                    className="w-full px-4 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl text-gray-800 dark:text-gray-200"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Тип травмы</label>
-                                {modalMode === 'view' ? (
-                                    <div className="w-full px-4 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl text-gray-800 dark:text-gray-200">
-                                        {formType || '—'}
+                        {/* Содержимое — зависит от режима */}
+                        <div className="flex-1 overflow-y-auto p-5 custom-scrollbar">
+                            {modalMode === 'view' ? (
+                                // --------------------------------------------------------------
+                                // РЕЖИМ ПРОСМОТРА (view): вертикальное расположение, файлы внизу
+                                // --------------------------------------------------------------
+                                <div className="space-y-5">
+                                    {/* Дата */}
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Дата</label>
+                                        <div className="w-full px-4 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl text-gray-800 dark:text-gray-200">
+                                            {selectedDate ? format(selectedDate, 'dd.MM.yyyy') : ''}
+                                        </div>
                                     </div>
-                                ) : (
-                                    <input
-                                        type="text"
-                                        value={formType}
-                                        onChange={(e) => setFormType(e.target.value)}
-                                        className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
-                                        placeholder="Например, порез, ушиб"
-                                    />
-                                )}
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Описание</label>
-                                {modalMode === 'view' ? (
-                                    <div className="w-full px-4 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl text-gray-800 dark:text-gray-200 min-h-[80px]">
-                                        {formDescription || '—'}
+                                    {/* Категория */}
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Категория происшествия</label>
+                                        <div className="w-full px-4 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl text-gray-800 dark:text-gray-200">
+                                            {formCategory ? categoryOptions.find(opt => opt.value === formCategory)?.label || formCategory : '—'}
+                                        </div>
                                     </div>
-                                ) : (
-                                    <textarea
-                                        value={formDescription}
-                                        onChange={(e) => setFormDescription(e.target.value)}
-                                        rows={3}
-                                        className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
-                                        placeholder="Подробное описание травмы"
-                                    />
-                                )}
-                            </div>
-
-                            {/* Блок файлов — для существующих травм используем InjuryFilesManager, для создания — PendingFilesManager */}
-                            <div className="border-t border-gray-200 dark:border-gray-700 pt-4 mt-2">
-                                <h4 className="text-md font-medium text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2">
-                                    <FiPaperclip className="w-4 h-4" /> Файлы
-                                </h4>
-                                {modalMode === 'create' ? (
-                                    <PendingFilesManager
-                                        pendingFiles={pendingFiles}
-                                        onAddFiles={addPendingFiles}
-                                        onRemoveFile={removePendingFile}
-                                        onUpdateDescription={updatePendingFileDescription}
-                                    />
-                                ) : selectedInjury ? (
-                                    <InjuryFilesManager
-                                        injuryId={selectedInjury.id}
-                                        isEditable={modalMode === 'edit'}
-                                    />
-                                ) : null}
-                            </div>
+                                    {/* Тип травмы */}
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Тип происшествия</label>
+                                        <div className="w-full px-4 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl text-gray-800 dark:text-gray-200">
+                                            {formType || '—'}
+                                        </div>
+                                    </div>
+                                    {/* Описание (увеличенная высота) */}
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Описание</label>
+                                        <div className="w-full px-4 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl text-gray-800 dark:text-gray-200 min-h-[160px] whitespace-pre-wrap">
+                                            {formDescription || '—'}
+                                        </div>
+                                    </div>
+                                    {/* Файлы – внизу, на всю ширину */}
+                                    <div>
+                                        <div className="bg-gray-50 dark:bg-gray-800/30 rounded-xl p-4 border border-gray-100 dark:border-gray-700">
+                                            <h4 className="text-md font-medium text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2">
+                                                <FiPaperclip className="w-4 h-4" /> Прикреплённые документы
+                                            </h4>
+                                            {selectedInjury ? (
+                                                <InjuryFilesManager
+                                                    injuryId={selectedInjury.id}
+                                                    isEditable={false} // в режиме просмотра редактирование файлов недоступно
+                                                />
+                                            ) : null}
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : (
+                                // --------------------------------------------------------------
+                                // РЕЖИМЫ СОЗДАНИЯ И РЕДАКТИРОВАНИЯ (create/edit): две колонки
+                                // --------------------------------------------------------------
+                                <div className="flex flex-col md:flex-row gap-6">
+                                    {/* Левая колонка: информация о травме */}
+                                    <div className="md:w-1/2 space-y-4">
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Дата</label>
+                                            <input
+                                                type="text"
+                                                value={selectedDate ? format(selectedDate, 'dd.MM.yyyy') : ''}
+                                                disabled
+                                                className="w-full px-4 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl text-gray-800 dark:text-gray-200"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Категория происшествия *</label>
+                                            <select
+                                                value={formCategory}
+                                                onChange={(e) => setFormCategory(e.target.value)}
+                                                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                                                required
+                                            >
+                                                <option value="">-- Выберите категорию --</option>
+                                                {categoryOptions.map(opt => (
+                                                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Тип происшествия</label>
+                                            <input
+                                                type="text"
+                                                value={formType}
+                                                onChange={(e) => setFormType(e.target.value)}
+                                                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                                                placeholder="Например, порез, ушиб"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Описание</label>
+                                            <textarea
+                                                value={formDescription}
+                                                onChange={(e) => setFormDescription(e.target.value)}
+                                                rows={8}
+                                                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                                                placeholder="Подробное описание травмы (до 1000 символов)"
+                                            />
+                                        </div>
+                                    </div>
+                                    {/* Правая колонка: файлы */}
+                                    <div className="md:w-1/2">
+                                        <div className="bg-gray-50 dark:bg-gray-800/30 rounded-xl p-4 border border-gray-100 dark:border-gray-700">
+                                            <h4 className="text-md font-medium text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2">
+                                                <FiPaperclip className="w-4 h-4" /> Прикреплённые документы
+                                            </h4>
+                                            {modalMode === 'create' ? (
+                                                <PendingFilesManager
+                                                    pendingFiles={pendingFiles}
+                                                    onAddFiles={addPendingFiles}
+                                                    onRemoveFile={removePendingFile}
+                                                    onUpdateDescription={updatePendingFileDescription}
+                                                />
+                                            ) : selectedInjury ? (
+                                                <InjuryFilesManager
+                                                    injuryId={selectedInjury.id}
+                                                    isEditable={modalMode === 'edit'}
+                                                />
+                                            ) : null}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                         </div>
 
-                        {/* Нижняя кнопочная панель */}
+                        {/* Нижняя кнопочная панель (одинаковая для всех режимов) */}
                         <div className="flex justify-end space-x-3 p-5 border-t border-gray-200 dark:border-gray-700">
                             {modalMode === 'edit' && (
                                 <>

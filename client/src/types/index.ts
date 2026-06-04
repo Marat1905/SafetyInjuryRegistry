@@ -7,6 +7,8 @@ export interface InjuryDto {
     type: string;
     /** Подробное описание */
     description: string;
+    /** Категория происшествия (П1-П6) */
+    category: string;
 }
 
 /**
@@ -19,6 +21,8 @@ export interface CreateInjuryRequest {
     type: string;
     /** Описание */
     description: string;
+    /** Категория происшествия */
+    category: string;
 }
 
 /**
@@ -29,6 +33,8 @@ export interface UpdateInjuryRequest {
     type: string;
     /** Описание */
     description: string;
+    /** Категория происшествия (опционально) */
+    category?: string;
 }
 
 /**
@@ -48,5 +54,5 @@ export interface InjuryFileDto {
     /** Описание файла (необязательно) */
     description?: string;
     /** Дата загрузки */
-    createdAt: string; // ISO строка
+    createdAt: string;
 }

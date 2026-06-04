@@ -12,12 +12,18 @@ public class InjuryConfiguration : IEntityTypeConfiguration<Injury>
         builder.HasKey(i => i.Id);
         builder.Property(i => i.Type)
             .IsRequired()
-            .HasMaxLength(100);
+            .HasMaxLength(200);
         builder.Property(i => i.Description)
             .IsRequired()
-            .HasMaxLength(500);
+            .HasMaxLength(1000);
         builder.Property(i => i.Date)
             .IsRequired();
+
+        // Настройка свойства Category – храним как строку (значение enum)
+        builder.Property(i => i.Category)
+            .IsRequired()
+            .HasConversion<string>()
+            .HasMaxLength(50);
 
         // Настройка связи один-ко-многим с InjuryFile
         builder.HasMany(i => i.Files)

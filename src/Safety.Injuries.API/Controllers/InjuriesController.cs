@@ -2,6 +2,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Safety.Injuries.Application.DTOs;
 using Safety.Injuries.Application.Interfaces;
+using Safety.Injuries.Domain.Enums;
 
 namespace Safety.Injuries.API.Controllers;
 
@@ -60,6 +61,10 @@ public class InjuriesController : ControllerBase
         if (!ModelState.IsValid)
             return BadRequest(ModelState);
 
+        // Валидация категории
+        if (!IsValidCategory(request.Category))
+            return BadRequest("Недопустимая категория. Допустимые значения: П1,П2,П3,П4,П5,П6 или Fatality,LostWorkdayCase,FirstAidCase,AccidentOrNearMiss,PreventedIncident,ThirdPartyInjury");
+
         var created = await _injuryService.CreateAsync(request);
         return CreatedAtAction(nameof(GetByMonth), new { year = DateTime.Parse(created.Date).Year, month = DateTime.Parse(created.Date).Month }, created);
     }
@@ -76,6 +81,10 @@ public class InjuriesController : ControllerBase
     {
         if (!ModelState.IsValid)
             return BadRequest(ModelState);
+
+        // Если категория передана – проверяем её валидность
+        if (!string.IsNullOrEmpty(request.Category) && !IsValidCategory(request.Category))
+            return BadRequest("Недопустимая категория. Допустимые значения: П1,П2,П3,П4,П5,П6 или Fatality,LostWorkdayCase,FirstAidCase,AccidentOrNearMiss,PreventedIncident,ThirdPartyInjury");
 
         try
         {
@@ -105,5 +114,25 @@ public class InjuriesController : ControllerBase
         {
             return NotFound(ex.Message);
         }
+    }
+
+    /// <summary>
+    /// Проверяет, является ли строка допустимым значением категории.
+    /// </summary>
+    private static bool IsValidCategory(string category)
+    {
+        if (string.IsNullOrWhiteSpace(category))
+            return false;
+
+        // Проверка по имени enum
+        if (Enum.TryParse<InjuryCategory>(category, true, out _))
+            return true;
+
+        // Проверка коротких обозначений
+        return category.ToUpper() switch
+        {
+            "П1" or "П2" or "П3" or "П4" or "П5" or "П6" => true,
+            _ => false
+        };
     }
 }

@@ -1,6 +1,7 @@
 ﻿using AutoMapper;
 using Safety.Injuries.Application.DTOs;
 using Safety.Injuries.Application.Interfaces;
+using Safety.Injuries.Application.Mapping;
 using Safety.Injuries.Domain.Entities;
 using Safety.Injuries.Domain.Interfaces;
 
@@ -22,15 +23,12 @@ public class InjuryService : IInjuryService
         // Используем FindAsync с фильтром по году и месяцу (UTC)
         var injuries = await _repository.FindAsync(i =>
             i.Date.Year == year && i.Date.Month == month);
-
         return _mapper.Map<IEnumerable<InjuryDto>>(injuries);
     }
 
     public async Task<IEnumerable<InjuryDto>> GetByYearAsync(int year)
     {
-        var injuries = await _repository.FindAsync(i =>
-            i.Date.Year == year);
-
+        var injuries = await _repository.FindAsync(i => i.Date.Year == year);
         return _mapper.Map<IEnumerable<InjuryDto>>(injuries);
     }
 
@@ -60,8 +58,15 @@ public class InjuryService : IInjuryService
         if (existing == null)
             throw new KeyNotFoundException($"Травма с id {id} не найдена");
 
-        // Маппим обновляемые поля
+        // Маппим все поля, кроме Category
         _mapper.Map(request, existing);
+
+        // Если категория передана – обновляем вручную
+        if (!string.IsNullOrEmpty(request.Category))
+        {
+            existing.Category = MappingProfile.MapCategoryFromString(request.Category);
+        }
+
         existing.UpdatedAt = DateTime.UtcNow;
 
         var updated = await _repository.UpdateAsync(existing);
