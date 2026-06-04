@@ -98,11 +98,24 @@ export const safetyService = {
     },
 
     /**
-     * Получить самую последнюю травму
+     * Получить самую последнюю травму (любую категорию)
      */
     async getLatest(): Promise<InjuryDto | null> {
         try {
             const response = await apiClient.get<InjuryDto>('/safety/injuries/latest');
+            return response.data;
+        } catch {
+            return null; // если 404 или ошибка – возвращаем null
+        }
+    },
+
+    /**
+     * Получить последнюю травму категорий П1 (Fatality) или П2 (LostWorkdayCase)
+     * Используется для сброса счётчика дней без травм
+     */
+    async getLatestSignificant(): Promise<InjuryDto | null> {
+        try {
+            const response = await apiClient.get<InjuryDto>('/safety/injuries/latest/significant');
             return response.data;
         } catch {
             return null; // если 404 или ошибка – возвращаем null

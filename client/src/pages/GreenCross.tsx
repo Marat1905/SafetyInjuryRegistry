@@ -1,4 +1,3 @@
-// GreenCross.tsx (добавлена поддержка категорий происшествий)
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
     format,
@@ -38,7 +37,23 @@ import type { InjuryDto } from '../types/index';
 import InjuryFilesManager from '../components/InjuryFilesManager';
 
 // ----------------------------------------------------------------------
-// Вспомогательный компонент для отображения одного месяца в календаре года
+// Вспомогательные функции для работы с категориями
+// ----------------------------------------------------------------------
+const isSignificantCategory = (category: string): boolean => {
+    const sig = ['Fatality', 'LostWorkdayCase', 'П1', 'П2'];
+    return sig.includes(category);
+};
+
+const getCategoryColorClass = (category: string, hasInjury: boolean): string => {
+    if (!hasInjury) return 'bg-gradient-to-br from-green-400 to-emerald-600 dark:from-green-600 dark:to-emerald-800';
+    if (isSignificantCategory(category)) {
+        return 'bg-gradient-to-br from-red-400 to-red-600 dark:from-red-600 dark:to-red-800 shadow-md shadow-red-200/50 dark:shadow-red-900/30';
+    }
+    return 'bg-gradient-to-br from-yellow-400 to-amber-600 dark:from-yellow-600 dark:to-amber-800 shadow-md shadow-yellow-200/50 dark:shadow-yellow-900/30';
+};
+
+// ----------------------------------------------------------------------
+// Компонент отображения одного месяца в годовом календаре
 // ----------------------------------------------------------------------
 const MonthView: React.FC<{
     year: number;
@@ -55,7 +70,7 @@ const MonthView: React.FC<{
     for (let d = 1; d <= daysInMonth; d++) days.push(d);
     while (days.length % 7 !== 0) days.push(null);
 
-    const hasInjury = (day: number): InjuryDto | undefined => {
+    const getInjuryForDay = (day: number): InjuryDto | undefined => {
         const date = new Date(year, monthIndex, day);
         return injuriesYear.find((inj) => isSameDay(new Date(inj.date), date));
     };
@@ -76,17 +91,18 @@ const MonthView: React.FC<{
             <div className="grid grid-cols-7 gap-0.5">
                 {days.map((day, idx) => {
                     if (day === null) return <div key={idx} className="aspect-square" />;
-                    const injury = hasInjury(day);
+                    const injury = getInjuryForDay(day);
                     const date = new Date(year, monthIndex, day);
                     const future = isFuture(date);
                     const isTodayDate = isCurrentMonth && day === today.getDate() && !future;
-                    let bgColor = 'bg-gray-100 dark:bg-gray-700';
+
+                    let bgColor = 'bg-gray-300 dark:bg-gray-600'; // будущий день
                     if (!future) {
-                        bgColor = injury
-                            ? 'bg-gradient-to-br from-red-400 to-red-600 dark:from-red-600 dark:to-red-800'
-                            : 'bg-gradient-to-br from-green-400 to-emerald-600 dark:from-green-600 dark:to-emerald-800';
-                    } else {
-                        bgColor = 'bg-gray-300 dark:bg-gray-600';
+                        if (injury) {
+                            bgColor = getCategoryColorClass(injury.category, true);
+                        } else {
+                            bgColor = 'bg-gradient-to-br from-green-400 to-emerald-600 dark:from-green-600 dark:to-emerald-800';
+                        }
                     }
                     const todayClass = isTodayDate ? 'ring-2 ring-blue-500 ring-offset-1 dark:ring-offset-gray-800' : '';
                     const clickable = !future || !!injury;
@@ -108,7 +124,7 @@ const MonthView: React.FC<{
 };
 
 // ----------------------------------------------------------------------
-// Компонент календаря года (12 месяцев)
+// Годовой календарь
 // ----------------------------------------------------------------------
 const YearCalendar: React.FC<{
     year: number;
@@ -137,7 +153,7 @@ const YearCalendar: React.FC<{
 };
 
 // ----------------------------------------------------------------------
-// Компонент для выбора файлов при создании травмы (без вкладок)
+// Менеджер файлов при создании травмы (без изменений)
 // ----------------------------------------------------------------------
 interface PendingFile {
     id: string;
@@ -273,14 +289,14 @@ const PendingFilesManager: React.FC<{
 // Основной компонент GreenCross
 // ----------------------------------------------------------------------
 const GreenCross: React.FC = () => {
-    const isSafetyEngineer = true;
+    const isSafetyEngineer = false;
 
     const [viewMode, setViewMode] = useState<'cross' | 'year'>('cross');
     const [currentDate, setCurrentDate] = useState(() => startOfMonth(new Date()));
 
     const [injuriesMonth, setInjuriesMonth] = useState<InjuryDto[]>([]);
     const [injuriesYear, setInjuriesYear] = useState<InjuryDto[]>([]);
-    const [latestInjury, setLatestInjury] = useState<InjuryDto | null>(null);
+    const [latestSignificantInjury, setLatestSignificantInjury] = useState<InjuryDto | null>(null);
     const [loading, setLoading] = useState(false);
 
     const [modalOpen, setModalOpen] = useState(false);
@@ -289,7 +305,7 @@ const GreenCross: React.FC = () => {
     const [modalMode, setModalMode] = useState<'create' | 'edit' | 'view'>('view');
     const [formType, setFormType] = useState('');
     const [formDescription, setFormDescription] = useState('');
-    const [formCategory, setFormCategory] = useState(''); // новое состояние для категории
+    const [formCategory, setFormCategory] = useState('');
     const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
     const [creating, setCreating] = useState(false);
 
@@ -298,21 +314,23 @@ const GreenCross: React.FC = () => {
         currentDateRef.current = currentDate;
     }, [currentDate]);
 
-    // Загрузка данных
+    // ------------------------------------------------------------------
+    // Загрузка данных (травмы за месяц/год + последняя значимая травма)
+    // ------------------------------------------------------------------
     const fetchData = useCallback(async (background = false) => {
         const date = currentDateRef.current;
         const year = date.getFullYear();
         const month = date.getMonth() + 1;
         if (!background) setLoading(true);
         try {
-            const [monthData, yearData, latest] = await Promise.all([
+            const [monthData, yearData, latestSig] = await Promise.all([
                 safetyService.getByMonth(year, month),
                 safetyService.getByYear(year),
-                safetyService.getLatest(),
+                safetyService.getLatestSignificant(),
             ]);
             setInjuriesMonth(monthData);
             setInjuriesYear(yearData);
-            setLatestInjury(latest);
+            setLatestSignificantInjury(latestSig);
         } catch (error) {
             console.error('Ошибка при обновлении данных:', error);
         } finally {
@@ -329,15 +347,19 @@ const GreenCross: React.FC = () => {
         return () => clearInterval(intervalId);
     }, [fetchData]);
 
-    const refreshLatest = useCallback(async () => {
+    // Обновление только последней значимой травмы
+    const refreshLatestSignificant = useCallback(async () => {
         try {
-            const latest = await safetyService.getLatest();
-            setLatestInjury(latest);
+            const latest = await safetyService.getLatestSignificant();
+            setLatestSignificantInjury(latest);
         } catch (error) {
-            console.error('Ошибка при обновлении последней травмы', error);
+            console.error('Ошибка при обновлении последней значимой травмы', error);
         }
     }, []);
 
+    // ------------------------------------------------------------------
+    // Навигация
+    // ------------------------------------------------------------------
     const goPrev = useCallback(() => {
         setCurrentDate((prev) => {
             if (viewMode === 'cross') {
@@ -362,6 +384,32 @@ const GreenCross: React.FC = () => {
         });
     }, [viewMode]);
 
+    // ------------------------------------------------------------------
+    // Статистика (только П1 и П2)
+    // ------------------------------------------------------------------
+    const stats = useMemo(() => {
+        // Травмы П1/П2 за месяц
+        const monthSignificant = injuriesMonth.filter(inj => isSignificantCategory(inj.category));
+        const yearSignificant = injuriesYear.filter(inj => isSignificantCategory(inj.category));
+
+        let daysWithoutInjury = 0;
+        if (latestSignificantInjury) {
+            const lastDate = new Date(latestSignificantInjury.date);
+            const today = startOfDay(new Date());
+            daysWithoutInjury = differenceInCalendarDays(today, lastDate) - 1;
+            if (daysWithoutInjury < 0) daysWithoutInjury = 0;
+        }
+        return {
+            monthInjuries: monthSignificant.length,
+            yearInjuries: yearSignificant.length,
+            daysWithoutInjury,
+            lastSignificantDate: latestSignificantInjury ? new Date(latestSignificantInjury.date) : null,
+        };
+    }, [injuriesMonth, injuriesYear, latestSignificantInjury]);
+
+    // ------------------------------------------------------------------
+    // Построение сетки для креста (7x7)
+    // ------------------------------------------------------------------
     const monthDays = useMemo(() => {
         return Array.from({ length: getDaysInMonth(currentDate) }, (_, i) => i + 1);
     }, [currentDate]);
@@ -403,20 +451,9 @@ const GreenCross: React.FC = () => {
         return content;
     }, [crossCells, monthDays, injuriesMonth, currentDate]);
 
-    const stats = useMemo(() => {
-        const monthInjuries = injuriesMonth.length;
-        const yearInjuries = injuriesYear.length;
-        let daysWithoutInjury = 0;
-        let globalLastInjuryDate: Date | null = null;
-        if (latestInjury) {
-            globalLastInjuryDate = new Date(latestInjury.date);
-            const today = startOfDay(new Date());
-            daysWithoutInjury = differenceInCalendarDays(today, globalLastInjuryDate) - 1;
-            if (daysWithoutInjury < 0) daysWithoutInjury = 0;
-        }
-        return { monthInjuries, yearInjuries, daysWithoutInjury, globalLastInjuryDate };
-    }, [injuriesMonth, injuriesYear, latestInjury]);
-
+    // ------------------------------------------------------------------
+    // Обработчики кликов
+    // ------------------------------------------------------------------
     const handleDateClick = useCallback((date: Date) => {
         const injury = injuriesYear.find((inj) => isSameDay(new Date(inj.date), date));
         if (isFuture(date) && !injury) return;
@@ -450,7 +487,9 @@ const GreenCross: React.FC = () => {
         if (cell) handleDateClick(cell.date);
     };
 
+    // ------------------------------------------------------------------
     // Управление файлами при создании
+    // ------------------------------------------------------------------
     const addPendingFiles = (files: File[]) => {
         const newFiles: PendingFile[] = files.map((file) => ({
             id: `${Date.now()}-${Math.random()}-${file.name}`,
@@ -468,7 +507,9 @@ const GreenCross: React.FC = () => {
         setPendingFiles((prev) => prev.map((f) => (f.id === id ? { ...f, description } : f)));
     };
 
-    // Список категорий для выпадающего списка
+    // ------------------------------------------------------------------
+    // Категории для выпадающего списка
+    // ------------------------------------------------------------------
     const categoryOptions = [
         { value: "Fatality", label: "П1 - Смертельный случай" },
         { value: "LostWorkdayCase", label: "П2 - Травма с потерей трудоспособности" },
@@ -478,6 +519,9 @@ const GreenCross: React.FC = () => {
         { value: "ThirdPartyInjury", label: "П6 - Травма третьего лица" }
     ];
 
+    // ------------------------------------------------------------------
+    // CRUD операции
+    // ------------------------------------------------------------------
     const handleCreate = async () => {
         if (!selectedDate || !formType.trim() || !formDescription.trim() || !formCategory) {
             alert("Заполните все поля и выберите категорию");
@@ -496,7 +540,7 @@ const GreenCross: React.FC = () => {
             // Обновляем локальные состояния
             setInjuriesMonth((prev) => [...prev, newInjury]);
             setInjuriesYear((prev) => [...prev, newInjury]);
-            await refreshLatest();
+            await refreshLatestSignificant(); // обновляем счётчик, если категория значимая
 
             // Загружаем файлы, если они есть
             if (pendingFiles.length > 0) {
@@ -533,7 +577,7 @@ const GreenCross: React.FC = () => {
             });
             setInjuriesMonth((prev) => prev.map((inj) => (inj.id === updated.id ? updated : inj)));
             setInjuriesYear((prev) => prev.map((inj) => (inj.id === updated.id ? updated : inj)));
-            await refreshLatest();
+            await refreshLatestSignificant();
             setModalOpen(false);
         } catch (error) {
             console.error('Ошибка при обновлении травмы', error);
@@ -546,7 +590,7 @@ const GreenCross: React.FC = () => {
             await safetyService.delete(selectedInjury.id);
             setInjuriesMonth((prev) => prev.filter((inj) => inj.id !== selectedInjury.id));
             setInjuriesYear((prev) => prev.filter((inj) => inj.id !== selectedInjury.id));
-            await refreshLatest();
+            await refreshLatestSignificant();
             setModalOpen(false);
         } catch (error) {
             console.error('Ошибка при удалении травмы', error);
@@ -560,6 +604,9 @@ const GreenCross: React.FC = () => {
         setPendingFiles([]);
     };
 
+    // ------------------------------------------------------------------
+    // Рендер
+    // ------------------------------------------------------------------
     return (
         <>
             <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 p-4 md:p-6">
@@ -609,7 +656,7 @@ const GreenCross: React.FC = () => {
                         <div className="lg:w-80 space-y-5">
                             <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-5">
                                 <h2 className="text-lg font-semibold text-gray-700 dark:text-gray-200 mb-4 flex items-center">
-                                    <FiActivity className="mr-2 text-green-500" /> Статистика
+                                    <FiActivity className="mr-2 text-green-500" /> Статистика (П1+П2)
                                 </h2>
                                 <div className="space-y-4">
                                     <div className="flex items-center space-x-4">
@@ -617,7 +664,7 @@ const GreenCross: React.FC = () => {
                                             <FiCalendar className="w-6 h-6 text-blue-600 dark:text-blue-400" />
                                         </div>
                                         <div>
-                                            <div className="text-sm text-gray-500 dark:text-gray-400">Травм за месяц</div>
+                                            <div className="text-sm text-gray-500 dark:text-gray-400">Травм П1-П2 за месяц</div>
                                             <div className="text-3xl font-bold text-gray-800 dark:text-white">{stats.monthInjuries}</div>
                                         </div>
                                     </div>
@@ -626,7 +673,7 @@ const GreenCross: React.FC = () => {
                                             <FiActivity className="w-6 h-6 text-purple-600 dark:text-purple-400" />
                                         </div>
                                         <div>
-                                            <div className="text-sm text-gray-500 dark:text-gray-400">Травм за год</div>
+                                            <div className="text-sm text-gray-500 dark:text-gray-400">Травм П1-П2 за год</div>
                                             <div className="text-3xl font-bold text-gray-800 dark:text-white">{stats.yearInjuries}</div>
                                         </div>
                                     </div>
@@ -635,11 +682,11 @@ const GreenCross: React.FC = () => {
                                             <FiClock className="w-6 h-6 text-amber-600 dark:text-amber-400" />
                                         </div>
                                         <div>
-                                            <div className="text-sm text-gray-500 dark:text-gray-400">Дней без травм</div>
+                                            <div className="text-sm text-gray-500 dark:text-gray-400">Дней без травм (П1+П2)</div>
                                             <div className="text-3xl font-bold text-gray-800 dark:text-white">{stats.daysWithoutInjury}</div>
-                                            {stats.globalLastInjuryDate && (
+                                            {stats.lastSignificantDate && (
                                                 <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                                                    Последняя травма: {format(stats.globalLastInjuryDate, 'dd.MM.yyyy')}
+                                                   Последняя травма: {format(stats.lastSignificantDate, 'dd.MM.yyyy')}
                                                 </div>
                                             )}
                                         </div>
@@ -656,7 +703,11 @@ const GreenCross: React.FC = () => {
                                     </div>
                                     <div className="flex items-center space-x-3">
                                         <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-red-400 to-red-600 shadow-md" />
-                                        <span className="text-gray-600 dark:text-gray-300">Есть травмы</span>
+                                        <span className="text-gray-600 dark:text-gray-300">Травмы П1 или П2</span>
+                                    </div>
+                                    <div className="flex items-center space-x-3">
+                                        <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-yellow-400 to-amber-600 shadow-md" />
+                                        <span className="text-gray-600 dark:text-gray-300">Травмы П3–П6</span>
                                     </div>
                                     <div className="flex items-center space-x-3">
                                         <div className="w-6 h-6 rounded-lg bg-gray-300 dark:bg-gray-600 shadow-md" />
@@ -682,7 +733,7 @@ const GreenCross: React.FC = () => {
                             )}
                         </div>
 
-                        {/* Правая колонка – отображение календаря */}
+                        {/* Правая колонка – календарь */}
                         <div className="flex-1">
                             {loading && (
                                 <div className="flex justify-center items-center py-12">
@@ -698,25 +749,27 @@ const GreenCross: React.FC = () => {
                                                 const cell = cellContent[key];
                                                 const isCross = crossCells.some((c) => c.row === row && c.col === col);
                                                 if (!isCross) return <div key={key} className="aspect-square" />;
-                                                const hasInjury = cell?.injury;
+
                                                 const dayNumber = cell?.day;
                                                 const cellDate = cell?.date;
+                                                const injury = cell?.injury;
                                                 const isFutureDate = cellDate ? isFuture(cellDate) : false;
                                                 const isTodayDate = cellDate ? isToday(cellDate) : false;
+
                                                 let bgColor = 'bg-gray-100 dark:bg-gray-700';
                                                 if (dayNumber) {
                                                     if (isFutureDate) bgColor = 'bg-gray-300 dark:bg-gray-600';
-                                                    else bgColor = hasInjury
-                                                        ? 'bg-gradient-to-br from-red-400 to-red-600 dark:from-red-600 dark:to-red-800 shadow-md shadow-red-200/50 dark:shadow-red-900/30'
-                                                        : 'bg-gradient-to-br from-green-400 to-emerald-600 dark:from-green-600 dark:to-emerald-800 shadow-md shadow-green-200/50 dark:shadow-green-900/30';
+                                                    else if (injury) bgColor = getCategoryColorClass(injury.category, true);
+                                                    else bgColor = 'bg-gradient-to-br from-green-400 to-emerald-600 dark:from-green-600 dark:to-emerald-800 shadow-md shadow-green-200/50 dark:shadow-green-900/30';
                                                 }
                                                 const todayClass = isTodayDate && dayNumber ? 'ring-2 ring-blue-500 ring-offset-2 dark:ring-offset-gray-800' : '';
+
                                                 return (
                                                     <button
                                                         key={key}
                                                         className={`aspect-square flex items-center justify-center rounded-xl transition-all duration-200 ${bgColor} ${todayClass} ${dayNumber && !isFutureDate ? 'cursor-pointer hover:scale-105 hover:shadow-lg active:scale-95' : dayNumber && isFutureDate ? 'cursor-not-allowed opacity-70' : 'cursor-default'}`}
                                                         onClick={() => handleCellClick(row, col)}
-                                                        title={hasInjury ? `Тип: ${cell!.injury!.type}\nКатегория: ${cell!.injury!.category}\nОписание: ${cell!.injury!.description}` : isFutureDate ? 'Будущий день' : ''}
+                                                        title={injury ? `Тип: ${injury.type}\nКатегория: ${injury.category}\nОписание: ${injury.description}` : isFutureDate ? 'Будущий день' : ''}
                                                         disabled={!dayNumber || isFutureDate}
                                                     >
                                                         {dayNumber && <span className="text-base md:text-lg font-bold text-white drop-shadow-md">{dayNumber}</span>}
@@ -735,7 +788,7 @@ const GreenCross: React.FC = () => {
                 </div>
             </div>
 
-            {/* МОДАЛЬНОЕ ОКНО: для режима просмотра (view) — вертикальное расположение, для create/edit — две колонки */}
+            {/* МОДАЛЬНОЕ ОКНО */}
             {modalOpen && (
                 <div
                     className="fixed inset-0 bg-black/60 dark:bg-gray-900/80 flex items-center justify-center p-4 z-50 backdrop-blur-sm transition-opacity"
@@ -757,7 +810,7 @@ const GreenCross: React.FC = () => {
                             </h3>
                             <button
                                 onClick={closeModal}
-                                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+                                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
                             >
                                 <FiX className="w-6 h-6" />
                             </button>
@@ -814,11 +867,11 @@ const GreenCross: React.FC = () => {
                                     </div>
                                 </div>
                             ) : (
-                                // --------------------------------------------------------------
-                                // РЕЖИМЫ СОЗДАНИЯ И РЕДАКТИРОВАНИЯ (create/edit): две колонки
-                                // --------------------------------------------------------------
-                                <div className="flex flex-col md:flex-row gap-6">
-                                    {/* Левая колонка: информация о травме */}
+                                    // --------------------------------------------------------------
+                                    // РЕЖИМЫ СОЗДАНИЯ И РЕДАКТИРОВАНИЯ (create/edit): две колонки
+                                    // --------------------------------------------------------------
+                                    <div className="flex flex-col md:flex-row gap-6">
+                                        {/* Левая колонка: информация о травме */}
                                     <div className="md:w-1/2 space-y-4">
                                         <div>
                                             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Дата</label>
@@ -863,9 +916,9 @@ const GreenCross: React.FC = () => {
                                                 placeholder="Подробное описание травмы (до 1000 символов)"
                                             />
                                         </div>
-                                    </div>
-                                    {/* Правая колонка: файлы */}
-                                    <div className="md:w-1/2">
+                                        </div>
+                                        {/* Правая колонка: файлы */}
+                                        <div className="md:w-1/2">
                                         <div className="bg-gray-50 dark:bg-gray-800/30 rounded-xl p-4 border border-gray-100 dark:border-gray-700">
                                             <h4 className="text-md font-medium text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2">
                                                 <FiPaperclip className="w-4 h-4" /> Прикреплённые документы
@@ -877,12 +930,12 @@ const GreenCross: React.FC = () => {
                                                     onRemoveFile={removePendingFile}
                                                     onUpdateDescription={updatePendingFileDescription}
                                                 />
-                                            ) : selectedInjury ? (
-                                                <InjuryFilesManager
-                                                    injuryId={selectedInjury.id}
-                                                    isEditable={modalMode === 'edit'}
-                                                />
-                                            ) : null}
+                                            ) : selectedInjury && (
+                                                        <InjuryFilesManager
+                                                            injuryId={selectedInjury.id}
+                                                            isEditable={true}
+                                                        />
+                                            )}
                                         </div>
                                     </div>
                                 </div>
