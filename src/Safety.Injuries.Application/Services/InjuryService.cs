@@ -3,6 +3,7 @@ using Safety.Injuries.Application.DTOs;
 using Safety.Injuries.Application.Interfaces;
 using Safety.Injuries.Application.Mapping;
 using Safety.Injuries.Domain.Entities;
+using Safety.Injuries.Domain.Enums;
 using Safety.Injuries.Domain.Interfaces;
 
 namespace Safety.Injuries.Application.Services;
@@ -35,6 +36,13 @@ public class InjuryService : IInjuryService
     public async Task<InjuryDto?> GetLatestAsync()
     {
         var injury = await _repository.GetLatestAsync();
+        return injury == null ? null : _mapper.Map<InjuryDto>(injury);
+    }
+
+    public async Task<InjuryDto?> GetLatestSignificantAsync()
+    {
+        var categories = new[] { InjuryCategory.Fatality, InjuryCategory.LostWorkdayCase };
+        var injury = await _repository.GetLatestByCategoriesAsync(categories);
         return injury == null ? null : _mapper.Map<InjuryDto>(injury);
     }
 

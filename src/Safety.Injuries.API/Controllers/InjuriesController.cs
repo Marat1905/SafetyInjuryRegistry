@@ -51,6 +51,18 @@ public class InjuriesController : ControllerBase
         return Ok(injury);
     }
 
+    // <summary>Получить последнюю травму категории П1 или П2 (для сброса счётчика)</summary>
+    [HttpGet("latest/significant")]
+    [ProducesResponseType(typeof(InjuryDto), 200)]
+    [ProducesResponseType(404)]
+    public async Task<IActionResult> GetLatestSignificant()
+    {
+        var injury = await _injuryService.GetLatestSignificantAsync();
+        if (injury == null)
+            return NotFound("Нет травм категорий П1 или П2");
+        return Ok(injury);
+    }
+
     /// <summary>Создать новую запись о травме (доступно только Safety/Admin)</summary>
     [HttpPost]
     //[Authorize(Policy = "SafetyPolicy")]
