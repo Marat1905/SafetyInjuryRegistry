@@ -289,7 +289,7 @@ const PendingFilesManager: React.FC<{
 // Основной компонент GreenCross
 // ----------------------------------------------------------------------
 const GreenCross: React.FC = () => {
-    const isSafetyEngineer = false;
+    const isSafetyEngineer = true;
 
     const [viewMode, setViewMode] = useState<'cross' | 'year'>('cross');
     const [currentDate, setCurrentDate] = useState(() => startOfMonth(new Date()));

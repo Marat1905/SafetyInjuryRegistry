@@ -1,10 +1,13 @@
+using FluentValidation;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using Safety.Injuries.API.Auth;
 using Safety.Injuries.API.Middleware;
 using Safety.Injuries.Application;
+using Safety.Injuries.Application.Validators;
 using Safety.Injuries.Infrastructure;
 using Safety.Injuries.Infrastructure.Data;
+using FluentValidation.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -31,7 +34,13 @@ builder.Services.AddSignalR(options =>
     options.EnableDetailedErrors = true;
     options.KeepAliveInterval = TimeSpan.FromSeconds(15);
 });
+// FluentValidation
+builder.Services.AddFluentValidationAutoValidation();
+builder.Services.AddValidatorsFromAssemblyContaining<CreateInjuryRequestValidator>();
 
+// Logging
+builder.Services.AddLogging();
+builder.Services.AddHealthChecks();
 builder.Services.AddCustomJWTAuthentification();
 
 //builder.Services.AddCors(options =>

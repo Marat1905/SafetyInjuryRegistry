@@ -2,13 +2,12 @@
 using Microsoft.AspNetCore.Mvc;
 using Safety.Injuries.Application.DTOs;
 using Safety.Injuries.Application.Interfaces;
-using Safety.Injuries.Domain.Enums;
 
 namespace Safety.Injuries.API.Controllers;
 
 [Route("api/safety/[controller]")]
 [ApiController]
-//[Authorize] // Требуется аутентификация для всех методов
+//[Authorize]
 public class InjuriesController : ControllerBase
 {
     private readonly IInjuryService _injuryService;
@@ -18,9 +17,6 @@ public class InjuriesController : ControllerBase
         _injuryService = injuryService;
     }
 
-    /// <summary>Получить травмы за указанный месяц</summary>
-    /// <param name="year">Год</param>
-    /// <param name="month">Месяц (1-12)</param>
     [HttpGet]
     [ProducesResponseType(typeof(IEnumerable<InjuryDto>), 200)]
     public async Task<IActionResult> GetByMonth([FromQuery] int year, [FromQuery] int month)
@@ -29,8 +25,6 @@ public class InjuriesController : ControllerBase
         return Ok(injuries);
     }
 
-    /// <summary>Получить травмы за указанный год</summary>
-    /// <param name="year">Год</param>
     [HttpGet("year/{year}")]
     [ProducesResponseType(typeof(IEnumerable<InjuryDto>), 200)]
     public async Task<IActionResult> GetByYear(int year)
@@ -39,7 +33,6 @@ public class InjuriesController : ControllerBase
         return Ok(injuries);
     }
 
-    /// <summary>Получить самую последнюю травму</summary>
     [HttpGet("latest")]
     [ProducesResponseType(typeof(InjuryDto), 200)]
     [ProducesResponseType(404)]
@@ -51,7 +44,6 @@ public class InjuriesController : ControllerBase
         return Ok(injury);
     }
 
-    // <summary>Получить последнюю травму категории П1 или П2 (для сброса счётчика)</summary>
     [HttpGet("latest/significant")]
     [ProducesResponseType(typeof(InjuryDto), 200)]
     [ProducesResponseType(404)]
@@ -63,7 +55,6 @@ public class InjuriesController : ControllerBase
         return Ok(injury);
     }
 
-    /// <summary>Создать новую запись о травме (доступно только Safety/Admin)</summary>
     [HttpPost]
     //[Authorize(Policy = "SafetyPolicy")]
     [ProducesResponseType(typeof(InjuryDto), 201)]
@@ -73,17 +64,10 @@ public class InjuriesController : ControllerBase
         if (!ModelState.IsValid)
             return BadRequest(ModelState);
 
-        // Валидация категории
-        if (!IsValidCategory(request.Category))
-            return BadRequest("Недопустимая категория. Допустимые значения: П1,П2,П3,П4,П5,П6 или Fatality,LostWorkdayCase,FirstAidCase,AccidentOrNearMiss,PreventedIncident,ThirdPartyInjury");
-
         var created = await _injuryService.CreateAsync(request);
         return CreatedAtAction(nameof(GetByMonth), new { year = DateTime.Parse(created.Date).Year, month = DateTime.Parse(created.Date).Month }, created);
     }
 
-    /// <summary>Обновить существующую травму (доступно только Safety/Admin)</summary>
-    /// <param name="id">Идентификатор травмы</param>
-    /// <param name="request">Данные для обновления</param>
     [HttpPut("{id}")]
     //[Authorize(Policy = "SafetyPolicy")]
     [ProducesResponseType(typeof(InjuryDto), 200)]
@@ -93,10 +77,6 @@ public class InjuriesController : ControllerBase
     {
         if (!ModelState.IsValid)
             return BadRequest(ModelState);
-
-        // Если категория передана – проверяем её валидность
-        if (!string.IsNullOrEmpty(request.Category) && !IsValidCategory(request.Category))
-            return BadRequest("Недопустимая категория. Допустимые значения: П1,П2,П3,П4,П5,П6 или Fatality,LostWorkdayCase,FirstAidCase,AccidentOrNearMiss,PreventedIncident,ThirdPartyInjury");
 
         try
         {
@@ -109,8 +89,6 @@ public class InjuriesController : ControllerBase
         }
     }
 
-    /// <summary>Удалить травму (доступно только Safety/Admin)</summary>
-    /// <param name="id">Идентификатор травмы</param>
     [HttpDelete("{id}")]
     //[Authorize(Policy = "SafetyPolicy")]
     [ProducesResponseType(204)]
@@ -126,25 +104,5 @@ public class InjuriesController : ControllerBase
         {
             return NotFound(ex.Message);
         }
-    }
-
-    /// <summary>
-    /// Проверяет, является ли строка допустимым значением категории.
-    /// </summary>
-    private static bool IsValidCategory(string category)
-    {
-        if (string.IsNullOrWhiteSpace(category))
-            return false;
-
-        // Проверка по имени enum
-        if (Enum.TryParse<InjuryCategory>(category, true, out _))
-            return true;
-
-        // Проверка коротких обозначений
-        return category.ToUpper() switch
-        {
-            "П1" or "П2" or "П3" or "П4" or "П5" or "П6" => true,
-            _ => false
-        };
     }
 }
