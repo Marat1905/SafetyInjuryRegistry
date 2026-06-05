@@ -13,6 +13,7 @@ import {
     FiLoader,
     FiPaperclip,
 } from 'react-icons/fi';
+import toast from 'react-hot-toast';
 import { safetyService } from '../services/api';
 import type { InjuryFileDto } from '../types';
 
@@ -84,6 +85,7 @@ const InjuryFilesManager: React.FC<InjuryFilesManagerProps> = ({ injuryId, isEdi
         } catch (err) {
             console.error('Ошибка загрузки файлов:', err);
             setGlobalError('Не удалось загрузить список файлов');
+            toast.error('Не удалось загрузить список файлов');
         } finally {
             setLoading(false);
         }
@@ -116,7 +118,7 @@ const InjuryFilesManager: React.FC<InjuryFilesManagerProps> = ({ injuryId, isEdi
         for (const file of Array.from(selectedFiles)) {
             const { valid, error } = validateFile(file);
             if (!valid) {
-                alert(`${file.name}: ${error}`);
+                toast.error(`${file.name}: ${error}`);
                 continue;
             }
             newFiles.push({
@@ -129,6 +131,7 @@ const InjuryFilesManager: React.FC<InjuryFilesManagerProps> = ({ injuryId, isEdi
         }
         if (newFiles.length) {
             setUploadQueue((prev) => [...prev, ...newFiles]);
+            toast.success(`Добавлено файлов: ${newFiles.length}`);
         }
     };
 
@@ -167,6 +170,7 @@ const InjuryFilesManager: React.FC<InjuryFilesManagerProps> = ({ injuryId, isEdi
     // ------------------------------------------------------------------
     const removeFromQueue = (id: string) => {
         setUploadQueue((prev) => prev.filter((item) => item.id !== id));
+        toast('Файл удалён из очереди', { icon: '🗑️' });
     };
 
     const updateDescription = (id: string, description: string) => {
@@ -176,7 +180,10 @@ const InjuryFilesManager: React.FC<InjuryFilesManagerProps> = ({ injuryId, isEdi
     };
 
     const clearQueue = () => {
-        if (window.confirm('Отменить загрузку всех файлов?')) setUploadQueue([]);
+        if (window.confirm('Отменить загрузку всех файлов?')) {
+            setUploadQueue([]);
+            toast('Очередь загрузки очищена', { icon: '🧹' });
+        }
     };
 
     // Загрузка всех файлов из очереди (последовательно)
@@ -212,6 +219,7 @@ const InjuryFilesManager: React.FC<InjuryFilesManagerProps> = ({ injuryId, isEdi
                 );
                 // Добавляем в основной список
                 setFiles((prev) => [...prev, uploadedFile]);
+                toast.success(`Файл "${item.file.name}" успешно загружен`);
             } catch (err) {
                 console.error('Ошибка загрузки:', err);
                 setUploadQueue((prev) =>
@@ -221,6 +229,7 @@ const InjuryFilesManager: React.FC<InjuryFilesManagerProps> = ({ injuryId, isEdi
                             : q
                     )
                 );
+                toast.error(`Ошибка загрузки файла "${item.file.name}"`);
             }
         }
 
@@ -244,20 +253,22 @@ const InjuryFilesManager: React.FC<InjuryFilesManagerProps> = ({ injuryId, isEdi
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
+            toast.success(`Скачивание "${file.fileName}" начато`);
         } catch (err) {
             console.error('Ошибка скачивания:', err);
-            alert('Не удалось скачать файл');
+            toast.error('Не удалось скачать файл');
         }
     };
 
-    const handleDelete = async (fileId: string) => {
-        if (!confirm('Удалить этот файл?')) return;
+    const handleDelete = async (fileId: string, fileName: string) => {
+        if (!confirm(`Удалить файл "${fileName}"?`)) return;
         try {
             await safetyService.deleteFile(injuryId, fileId);
             setFiles((prev) => prev.filter((f) => f.id !== fileId));
+            toast.success(`Файл "${fileName}" удалён`);
         } catch (err) {
             console.error('Ошибка удаления:', err);
-            alert('Не удалось удалить файл');
+            toast.error(`Не удалось удалить файл "${fileName}"`);
         }
     };
 
@@ -389,7 +400,7 @@ const InjuryFilesManager: React.FC<InjuryFilesManagerProps> = ({ injuryId, isEdi
                                         </button>
                                         {isEditable && (
                                             <button
-                                                onClick={() => handleDelete(file.id)}
+                                                onClick={() => handleDelete(file.id, file.fileName)}
                                                 className="p-1.5 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30"
                                                 title="Удалить"
                                             >

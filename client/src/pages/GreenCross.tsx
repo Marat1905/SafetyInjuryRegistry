@@ -32,9 +32,14 @@ import {
     FiImage,
     FiFileText,
 } from 'react-icons/fi';
+import { useForm, Controller } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import toast from 'react-hot-toast';
 import { safetyService } from '../services/api';
 import type { InjuryDto } from '../types/index';
 import InjuryFilesManager from '../components/InjuryFilesManager';
+// Импорт схем валидации из отдельного файла
+import { createInjurySchema, updateInjurySchema, type CreateInjuryFormData, type UpdateInjuryFormData } from '../schemas/validationSchemas';
 
 // ----------------------------------------------------------------------
 // Вспомогательные функции для работы с категориями
@@ -289,7 +294,7 @@ const PendingFilesManager: React.FC<{
 // Основной компонент GreenCross
 // ----------------------------------------------------------------------
 const GreenCross: React.FC = () => {
-    const isSafetyEngineer = true;
+    const isSafetyEngineer = false;
 
     const [viewMode, setViewMode] = useState<'cross' | 'year'>('cross');
     const [currentDate, setCurrentDate] = useState(() => startOfMonth(new Date()));
@@ -303,11 +308,29 @@ const GreenCross: React.FC = () => {
     const [selectedDate, setSelectedDate] = useState<Date | null>(null);
     const [selectedInjury, setSelectedInjury] = useState<InjuryDto | null>(null);
     const [modalMode, setModalMode] = useState<'create' | 'edit' | 'view'>('view');
-    const [formType, setFormType] = useState('');
-    const [formDescription, setFormDescription] = useState('');
-    const [formCategory, setFormCategory] = useState('');
     const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
     const [creating, setCreating] = useState(false);
+
+    // Реактивные формы с использованием импортированных схем
+    const {
+        control: createControl,
+        handleSubmit: handleCreateSubmit,
+        reset: resetCreateForm,
+        formState: { errors: createErrors, isSubmitting: createSubmitting },
+    } = useForm<CreateInjuryFormData>({
+        resolver: zodResolver(createInjurySchema),
+        defaultValues: { type: '', description: '', category: '' },
+    });
+
+    const {
+        control: updateControl,
+        handleSubmit: handleUpdateSubmit,
+        reset: resetUpdateForm,
+        formState: { errors: updateErrors, isSubmitting: updateSubmitting },
+    } = useForm<UpdateInjuryFormData>({
+        resolver: zodResolver(updateInjurySchema),
+        defaultValues: { type: '', description: '', category: '' },
+    });
 
     const currentDateRef = useRef(currentDate);
     useEffect(() => {
@@ -333,6 +356,7 @@ const GreenCross: React.FC = () => {
             setLatestSignificantInjury(latestSig);
         } catch (error) {
             console.error('Ошибка при обновлении данных:', error);
+            toast.error('Не удалось загрузить данные');
         } finally {
             if (!background) setLoading(false);
         }
@@ -461,17 +485,19 @@ const GreenCross: React.FC = () => {
         setSelectedDate(date);
         if (injury) {
             setSelectedInjury(injury);
-            setFormType(injury.type);
-            setFormDescription(injury.description);
-            setFormCategory(injury.category); // заполняем категорию
+            // Заполняем формы редактирования
+            resetUpdateForm({
+                type: injury.type,
+                description: injury.description,
+                category: injury.category,
+            });
             setModalMode(isSafetyEngineer ? 'edit' : 'view');
             setPendingFiles([]);
         } else {
             if (isSafetyEngineer) {
                 setSelectedInjury(null);
-                setFormType('');
-                setFormDescription('');
-                setFormCategory(''); // для новой записи категория пока не выбрана
+                // Сбрасываем форму создания
+                resetCreateForm({ type: '', description: '', category: '' });
                 setModalMode('create');
                 setPendingFiles([]);
             } else {
@@ -479,7 +505,7 @@ const GreenCross: React.FC = () => {
             }
         }
         setModalOpen(true);
-    }, [injuriesYear, isSafetyEngineer]);
+    }, [injuriesYear, isSafetyEngineer, resetCreateForm, resetUpdateForm]);
 
     const handleCellClick = (row: number, col: number) => {
         const key = `${row}-${col}`;
@@ -520,80 +546,89 @@ const GreenCross: React.FC = () => {
     ];
 
     // ------------------------------------------------------------------
-    // CRUD операции
+    // CRUD операции с тостами
     // ------------------------------------------------------------------
-    const handleCreate = async () => {
-        if (!selectedDate || !formType.trim() || !formDescription.trim() || !formCategory) {
-            alert("Заполните все поля и выберите категорию");
+    const onCreate = async (data: CreateInjuryFormData) => {
+        if (!selectedDate) {
+            toast.error('Дата не выбрана');
             return;
         }
         setCreating(true);
         try {
-            // Создаём травму с категорией
+            // Создаём травму
             const newInjury = await safetyService.create({
                 date: format(selectedDate, 'yyyy-MM-dd'),
-                type: formType,
-                description: formDescription,
-                category: formCategory,
+                type: data.type,
+                description: data.description,
+                category: data.category,
             });
 
             // Обновляем локальные состояния
             setInjuriesMonth((prev) => [...prev, newInjury]);
             setInjuriesYear((prev) => [...prev, newInjury]);
-            await refreshLatestSignificant(); // обновляем счётчик, если категория значимая
+            await refreshLatestSignificant();
 
             // Загружаем файлы, если они есть
             if (pendingFiles.length > 0) {
-                for (const pending of pendingFiles) {
+                const uploadPromises = pendingFiles.map(async (pending) => {
                     try {
                         await safetyService.uploadFile(
                             newInjury.id,
                             pending.file,
                             pending.description.trim() || undefined
                         );
+                        toast.success(`Файл "${pending.file.name}" загружен`);
                     } catch (err) {
                         console.error(`Ошибка загрузки файла ${pending.file.name}:`, err);
+                        toast.error(`Ошибка загрузки файла "${pending.file.name}"`);
                     }
-                }
+                });
+                await Promise.allSettled(uploadPromises);
             }
 
+            toast.success('Запись о травме успешно создана');
             setModalOpen(false);
             setPendingFiles([]);
         } catch (error) {
             console.error('Ошибка при создании травмы', error);
-            alert('Не удалось создать травму');
+            toast.error('Не удалось создать травму');
         } finally {
             setCreating(false);
         }
     };
 
-    const handleUpdate = async () => {
-        if (!selectedInjury || !formType.trim() || !formDescription.trim()) return;
+    const onUpdate = async (data: UpdateInjuryFormData) => {
+        if (!selectedInjury) return;
         try {
             const updated = await safetyService.update(selectedInjury.id, {
-                type: formType,
-                description: formDescription,
-                category: formCategory !== selectedInjury.category ? formCategory : undefined, // отправляем категорию только если изменилась
+                type: data.type ?? selectedInjury.type,
+                description: data.description ?? selectedInjury.description,
+                category: data.category !== selectedInjury.category ? data.category : undefined,
             });
             setInjuriesMonth((prev) => prev.map((inj) => (inj.id === updated.id ? updated : inj)));
             setInjuriesYear((prev) => prev.map((inj) => (inj.id === updated.id ? updated : inj)));
             await refreshLatestSignificant();
+            toast.success('Запись о травме обновлена');
             setModalOpen(false);
         } catch (error) {
             console.error('Ошибка при обновлении травмы', error);
+            toast.error('Не удалось обновить травму');
         }
     };
 
     const handleDelete = async () => {
         if (!selectedInjury) return;
+        if (!confirm('Вы уверены, что хотите удалить эту травму? Это действие необратимо.')) return;
         try {
             await safetyService.delete(selectedInjury.id);
             setInjuriesMonth((prev) => prev.filter((inj) => inj.id !== selectedInjury.id));
             setInjuriesYear((prev) => prev.filter((inj) => inj.id !== selectedInjury.id));
             await refreshLatestSignificant();
+            toast.success('Запись о травме удалена');
             setModalOpen(false);
         } catch (error) {
             console.error('Ошибка при удалении травмы', error);
+            toast.error('Не удалось удалить травму');
         }
     };
 
@@ -602,6 +637,8 @@ const GreenCross: React.FC = () => {
         setSelectedDate(null);
         setSelectedInjury(null);
         setPendingFiles([]);
+        resetCreateForm();
+        resetUpdateForm();
     };
 
     // ------------------------------------------------------------------
@@ -686,7 +723,7 @@ const GreenCross: React.FC = () => {
                                             <div className="text-3xl font-bold text-gray-800 dark:text-white">{stats.daysWithoutInjury}</div>
                                             {stats.lastSignificantDate && (
                                                 <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                                                   Последняя травма: {format(stats.lastSignificantDate, 'dd.MM.yyyy')}
+                                                    Последняя травма: {format(stats.lastSignificantDate, 'dd.MM.yyyy')}
                                                 </div>
                                             )}
                                         </div>
@@ -834,21 +871,21 @@ const GreenCross: React.FC = () => {
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Категория происшествия</label>
                                         <div className="w-full px-4 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl text-gray-800 dark:text-gray-200">
-                                            {formCategory ? categoryOptions.find(opt => opt.value === formCategory)?.label || formCategory : '—'}
+                                            {selectedInjury ? categoryOptions.find(opt => opt.value === selectedInjury.category)?.label || selectedInjury.category : '—'}
                                         </div>
                                     </div>
                                     {/* Тип травмы */}
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Тип происшествия</label>
                                         <div className="w-full px-4 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl text-gray-800 dark:text-gray-200">
-                                            {formType || '—'}
+                                            {selectedInjury?.type || '—'}
                                         </div>
                                     </div>
                                     {/* Описание (увеличенная высота) */}
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Описание</label>
                                         <div className="w-full px-4 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl text-gray-800 dark:text-gray-200 min-h-[160px] whitespace-pre-wrap">
-                                            {formDescription || '—'}
+                                            {selectedInjury?.description || '—'}
                                         </div>
                                     </div>
                                     {/* Файлы – внизу, на всю ширину */}
@@ -867,118 +904,159 @@ const GreenCross: React.FC = () => {
                                     </div>
                                 </div>
                             ) : (
-                                    // --------------------------------------------------------------
-                                    // РЕЖИМЫ СОЗДАНИЯ И РЕДАКТИРОВАНИЯ (create/edit): две колонки
-                                    // --------------------------------------------------------------
+                                // --------------------------------------------------------------
+                                // РЕЖИМЫ СОЗДАНИЯ И РЕДАКТИРОВАНИЯ (create/edit): две колонки с react-hook-form
+                                // --------------------------------------------------------------
+                                <form onSubmit={modalMode === 'create' ? handleCreateSubmit(onCreate) : handleUpdateSubmit(onUpdate)}>
                                     <div className="flex flex-col md:flex-row gap-6">
                                         {/* Левая колонка: информация о травме */}
-                                    <div className="md:w-1/2 space-y-4">
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Дата</label>
-                                            <input
-                                                type="text"
-                                                value={selectedDate ? format(selectedDate, 'dd.MM.yyyy') : ''}
-                                                disabled
-                                                className="w-full px-4 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl text-gray-800 dark:text-gray-200"
-                                            />
+                                        <div className="md:w-1/2 space-y-4">
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Дата</label>
+                                                <input
+                                                    type="text"
+                                                    value={selectedDate ? format(selectedDate, 'dd.MM.yyyy') : ''}
+                                                    disabled
+                                                    className="w-full px-4 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl text-gray-800 dark:text-gray-200"
+                                                />
+                                            </div>
+
+                                            {/* Поле Категория */}
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Категория происшествия *</label>
+                                                <Controller
+                                                    name="category"
+                                                    control={(modalMode === 'create' ? createControl : updateControl) as any}
+                                                    render={({ field }) => (
+                                                        <select
+                                                            {...field}
+                                                            className={`w-full px-4 py-2 border rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent dark:bg-gray-700 dark:text-white ${(modalMode === 'create' ? createErrors.category : updateErrors.category)
+                                                                    ? 'border-red-500 dark:border-red-500'
+                                                                    : 'border-gray-300 dark:border-gray-600'
+                                                                }`}
+                                                        >
+                                                            <option value="">-- Выберите категорию --</option>
+                                                            {categoryOptions.map(opt => (
+                                                                <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                                            ))}
+                                                        </select>
+                                                    )}
+                                                />
+                                                {(modalMode === 'create' ? createErrors.category : updateErrors.category) && (
+                                                    <p className="mt-1 text-xs text-red-500">
+                                                        {(modalMode === 'create' ? createErrors.category : updateErrors.category)?.message}
+                                                    </p>
+                                                )}
+                                            </div>
+
+                                            {/* Поле Тип происшествия */}
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Тип происшествия</label>
+                                                <Controller
+                                                    name="type"
+                                                    control={(modalMode === 'create' ? createControl : updateControl) as any}
+                                                    render={({ field }) => (
+                                                        <input
+                                                            {...field}
+                                                            type="text"
+                                                            placeholder="Например, порез, ушиб"
+                                                            className={`w-full px-4 py-2 border rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent dark:bg-gray-700 dark:text-white ${(modalMode === 'create' ? createErrors.type : updateErrors.type)
+                                                                    ? 'border-red-500 dark:border-red-500'
+                                                                    : 'border-gray-300 dark:border-gray-600'
+                                                                }`}
+                                                        />
+                                                    )}
+                                                />
+                                                {(modalMode === 'create' ? createErrors.type : updateErrors.type) && (
+                                                    <p className="mt-1 text-xs text-red-500">
+                                                        {(modalMode === 'create' ? createErrors.type : updateErrors.type)?.message}
+                                                    </p>
+                                                )}
+                                            </div>
+
+                                            {/* Поле Описание */}
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Описание</label>
+                                                <Controller
+                                                    name="description"
+                                                    control={(modalMode === 'create' ? createControl : updateControl) as any}
+                                                    render={({ field }) => (
+                                                        <textarea
+                                                            {...field}
+                                                            rows={8}
+                                                            placeholder="Подробное описание травмы (до 1000 символов)"
+                                                            className={`w-full px-4 py-2 border rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent dark:bg-gray-700 dark:text-white ${(modalMode === 'create' ? createErrors.description : updateErrors.description)
+                                                                    ? 'border-red-500 dark:border-red-500'
+                                                                    : 'border-gray-300 dark:border-gray-600'
+                                                                }`}
+                                                        />
+                                                    )}
+                                                />
+                                                {(modalMode === 'create' ? createErrors.description : updateErrors.description) && (
+                                                    <p className="mt-1 text-xs text-red-500">
+                                                        {(modalMode === 'create' ? createErrors.description : updateErrors.description)?.message}
+                                                    </p>
+                                                )}
+                                            </div>
                                         </div>
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Категория происшествия *</label>
-                                            <select
-                                                value={formCategory}
-                                                onChange={(e) => setFormCategory(e.target.value)}
-                                                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
-                                                required
-                                            >
-                                                <option value="">-- Выберите категорию --</option>
-                                                {categoryOptions.map(opt => (
-                                                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                                                ))}
-                                            </select>
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Тип происшествия</label>
-                                            <input
-                                                type="text"
-                                                value={formType}
-                                                onChange={(e) => setFormType(e.target.value)}
-                                                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
-                                                placeholder="Например, порез, ушиб"
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Описание</label>
-                                            <textarea
-                                                value={formDescription}
-                                                onChange={(e) => setFormDescription(e.target.value)}
-                                                rows={8}
-                                                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
-                                                placeholder="Подробное описание травмы (до 1000 символов)"
-                                            />
-                                        </div>
-                                        </div>
+
                                         {/* Правая колонка: файлы */}
                                         <div className="md:w-1/2">
-                                        <div className="bg-gray-50 dark:bg-gray-800/30 rounded-xl p-4 border border-gray-100 dark:border-gray-700">
-                                            <h4 className="text-md font-medium text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2">
-                                                <FiPaperclip className="w-4 h-4" /> Прикреплённые документы
-                                            </h4>
-                                            {modalMode === 'create' ? (
-                                                <PendingFilesManager
-                                                    pendingFiles={pendingFiles}
-                                                    onAddFiles={addPendingFiles}
-                                                    onRemoveFile={removePendingFile}
-                                                    onUpdateDescription={updatePendingFileDescription}
-                                                />
-                                            ) : selectedInjury && (
-                                                        <InjuryFilesManager
-                                                            injuryId={selectedInjury.id}
-                                                            isEditable={true}
-                                                        />
-                                            )}
+                                            <div className="bg-gray-50 dark:bg-gray-800/30 rounded-xl p-4 border border-gray-100 dark:border-gray-700">
+                                                <h4 className="text-md font-medium text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2">
+                                                    <FiPaperclip className="w-4 h-4" /> Прикреплённые документы
+                                                </h4>
+                                                {modalMode === 'create' ? (
+                                                    <PendingFilesManager
+                                                        pendingFiles={pendingFiles}
+                                                        onAddFiles={addPendingFiles}
+                                                        onRemoveFile={removePendingFile}
+                                                        onUpdateDescription={updatePendingFileDescription}
+                                                    />
+                                                ) : selectedInjury && (
+                                                    <InjuryFilesManager
+                                                        injuryId={selectedInjury.id}
+                                                        isEditable={true}
+                                                    />
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
-                            )}
-                        </div>
 
-                        {/* Нижняя кнопочная панель (одинаковая для всех режимов) */}
-                        <div className="flex justify-end space-x-3 p-5 border-t border-gray-200 dark:border-gray-700">
-                            {modalMode === 'edit' && (
-                                <>
-                                    <button
-                                        onClick={handleDelete}
-                                        className="px-5 py-2 bg-red-500 hover:bg-red-600 text-white rounded-xl transition-colors flex items-center space-x-2"
-                                    >
-                                        <FiTrash2 className="w-4 h-4" />
-                                        <span>Удалить</span>
-                                    </button>
-                                    <button
-                                        onClick={handleUpdate}
-                                        className="px-5 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-xl transition-colors"
-                                    >
-                                        Сохранить
-                                    </button>
-                                </>
-                            )}
-                            {modalMode === 'create' && (
-                                <button
-                                    onClick={handleCreate}
-                                    disabled={creating}
-                                    className="px-5 py-2 bg-green-500 hover:bg-green-600 disabled:bg-green-300 text-white rounded-xl transition-colors flex items-center space-x-2"
-                                >
-                                    {creating && <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />}
-                                    <FiPlus className="w-4 h-4" />
-                                    <span>{creating ? 'Создание...' : 'Создать'}</span>
-                                </button>
-                            )}
-                            {modalMode === 'view' && (
-                                <button
-                                    onClick={closeModal}
-                                    className="px-5 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-xl transition-colors"
-                                >
-                                    Закрыть
-                                </button>
+                                    {/* Кнопки действий */}
+                                    <div className="flex justify-end space-x-3 mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
+                                        {modalMode === 'edit' && (
+                                            <>
+                                                <button
+                                                    type="button"
+                                                    onClick={handleDelete}
+                                                    className="px-5 py-2 bg-red-500 hover:bg-red-600 text-white rounded-xl transition-colors flex items-center space-x-2"
+                                                >
+                                                    <FiTrash2 className="w-4 h-4" />
+                                                    <span>Удалить</span>
+                                                </button>
+                                                <button
+                                                    type="submit"
+                                                    disabled={updateSubmitting}
+                                                    className="px-5 py-2 bg-blue-500 hover:bg-blue-600 disabled:bg-blue-300 text-white rounded-xl transition-colors"
+                                                >
+                                                    {updateSubmitting ? 'Сохранение...' : 'Сохранить'}
+                                                </button>
+                                            </>
+                                        )}
+                                        {modalMode === 'create' && (
+                                            <button
+                                                type="submit"
+                                                disabled={createSubmitting || creating}
+                                                className="px-5 py-2 bg-green-500 hover:bg-green-600 disabled:bg-green-300 text-white rounded-xl transition-colors flex items-center space-x-2"
+                                            >
+                                                {(createSubmitting || creating) && <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />}
+                                                <FiPlus className="w-4 h-4" />
+                                                <span>{(createSubmitting || creating) ? 'Создание...' : 'Создать'}</span>
+                                            </button>
+                                        )}
+                                    </div>
+                                </form>
                             )}
                         </div>
                     </div>
