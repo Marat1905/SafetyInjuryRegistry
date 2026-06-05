@@ -7,7 +7,7 @@ namespace Safety.Injuries.API.Controllers;
 
 [Route("api/safety/[controller]")]
 [ApiController]
-//[Authorize] // Требуется аутентификация для всех методов
+//[Authorize]
 public class InjuriesController : ControllerBase
 {
     private readonly IInjuryService _injuryService;
@@ -17,9 +17,6 @@ public class InjuriesController : ControllerBase
         _injuryService = injuryService;
     }
 
-    /// <summary>Получить травмы за указанный месяц</summary>
-    /// <param name="year">Год</param>
-    /// <param name="month">Месяц (1-12)</param>
     [HttpGet]
     [ProducesResponseType(typeof(IEnumerable<InjuryDto>), 200)]
     public async Task<IActionResult> GetByMonth([FromQuery] int year, [FromQuery] int month)
@@ -28,8 +25,6 @@ public class InjuriesController : ControllerBase
         return Ok(injuries);
     }
 
-    /// <summary>Получить травмы за указанный год</summary>
-    /// <param name="year">Год</param>
     [HttpGet("year/{year}")]
     [ProducesResponseType(typeof(IEnumerable<InjuryDto>), 200)]
     public async Task<IActionResult> GetByYear(int year)
@@ -38,7 +33,6 @@ public class InjuriesController : ControllerBase
         return Ok(injuries);
     }
 
-    /// <summary>Получить самую последнюю травму</summary>
     [HttpGet("latest")]
     [ProducesResponseType(typeof(InjuryDto), 200)]
     [ProducesResponseType(404)]
@@ -50,7 +44,17 @@ public class InjuriesController : ControllerBase
         return Ok(injury);
     }
 
-    /// <summary>Создать новую запись о травме (доступно только Safety/Admin)</summary>
+    [HttpGet("latest/significant")]
+    [ProducesResponseType(typeof(InjuryDto), 200)]
+    [ProducesResponseType(404)]
+    public async Task<IActionResult> GetLatestSignificant()
+    {
+        var injury = await _injuryService.GetLatestSignificantAsync();
+        if (injury == null)
+            return NotFound("Нет травм категорий П1 или П2");
+        return Ok(injury);
+    }
+
     [HttpPost]
     //[Authorize(Policy = "SafetyPolicy")]
     [ProducesResponseType(typeof(InjuryDto), 201)]
@@ -64,9 +68,6 @@ public class InjuriesController : ControllerBase
         return CreatedAtAction(nameof(GetByMonth), new { year = DateTime.Parse(created.Date).Year, month = DateTime.Parse(created.Date).Month }, created);
     }
 
-    /// <summary>Обновить существующую травму (доступно только Safety/Admin)</summary>
-    /// <param name="id">Идентификатор травмы</param>
-    /// <param name="request">Данные для обновления</param>
     [HttpPut("{id}")]
     //[Authorize(Policy = "SafetyPolicy")]
     [ProducesResponseType(typeof(InjuryDto), 200)]
@@ -88,8 +89,6 @@ public class InjuriesController : ControllerBase
         }
     }
 
-    /// <summary>Удалить травму (доступно только Safety/Admin)</summary>
-    /// <param name="id">Идентификатор травмы</param>
     [HttpDelete("{id}")]
     //[Authorize(Policy = "SafetyPolicy")]
     [ProducesResponseType(204)]

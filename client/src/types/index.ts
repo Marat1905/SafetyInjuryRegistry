@@ -7,6 +7,8 @@ export interface InjuryDto {
     type: string;
     /** Подробное описание */
     description: string;
+    /** Категория происшествия (П1-П6) */
+    category: string;
 }
 
 /**
@@ -19,6 +21,8 @@ export interface CreateInjuryRequest {
     type: string;
     /** Описание */
     description: string;
+    /** Категория происшествия */
+    category: string;
 }
 
 /**
@@ -29,4 +33,26 @@ export interface UpdateInjuryRequest {
     type: string;
     /** Описание */
     description: string;
+    /** Категория происшествия (опционально) */
+    category?: string;
+}
+
+/**
+ * Информация о файле, прикреплённом к травме
+ */
+export interface InjuryFileDto {
+    /** Идентификатор файла */
+    id: string;
+    /** Идентификатор травмы */
+    injuryId: string;
+    /** Оригинальное имя файла */
+    fileName: string;
+    /** MIME-тип */
+    contentType: string;
+    /** Размер в байтах */
+    size: number;
+    /** Описание файла (необязательно) */
+    description?: string;
+    /** Дата загрузки */
+    createdAt: string;
 }

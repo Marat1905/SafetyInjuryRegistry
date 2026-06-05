@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Toaster } from 'react-hot-toast';
 import { FiSun, FiMoon } from 'react-icons/fi';
 import GreenCross from './pages/GreenCross';
 import './index.css';
@@ -31,6 +32,18 @@ function App() {
 
     return (
         <>
+            {/* Глобальный контейнер для уведомлений (тостов) */}
+            <Toaster
+                position="top-right"
+                toastOptions={{
+                    duration: 4000,
+                    style: {
+                        background: theme === 'dark' ? '#1f2937' : '#fff',
+                        color: theme === 'dark' ? '#f3f4f6' : '#1f2937',
+                    },
+                }}
+            />
+
             {/* Кнопка переключения темы – абсолютное позиционирование, чтобы она была всегда под рукой */}
             <button
                 onClick={toggleTheme}

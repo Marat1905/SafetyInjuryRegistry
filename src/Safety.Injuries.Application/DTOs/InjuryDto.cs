@@ -16,6 +16,9 @@ public class InjuryDto
 
     /// <summary>Описание</summary>
     public string Description { get; set; } = string.Empty;
+
+    /// <summary>Категория происшествия (П1–П6)</summary>
+    public string Category { get; set; } = string.Empty;
 }
 
 /// <summary>
@@ -31,6 +34,9 @@ public class CreateInjuryRequest
 
     /// <summary>Описание</summary>
     public string Description { get; set; } = string.Empty;
+
+    /// <summary>Категория происшествия (строка: "Fatality", "LostWorkdayCase" и т.д. или "П1"–"П6")</summary>
+    public string Category { get; set; } = string.Empty;
 }
 
 /// <summary>
@@ -43,4 +49,7 @@ public class UpdateInjuryRequest
 
     /// <summary>Описание</summary>
     public string Description { get; set; } = string.Empty;
+
+    /// <summary>Категория происшествия (опционально – если не указана, остаётся прежней)</summary>
+    public string? Category { get; set; }
 }

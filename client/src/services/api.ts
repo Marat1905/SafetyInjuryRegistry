@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { InjuryDto, CreateInjuryRequest, UpdateInjuryRequest } from '../types/index';
+import type { InjuryDto, CreateInjuryRequest, UpdateInjuryRequest, InjuryFileDto } from '../types/index';
 
 const API_BASE_URL = '/api';
 
@@ -98,11 +98,24 @@ export const safetyService = {
     },
 
     /**
-     * Получить самую последнюю травму
+     * Получить самую последнюю травму (любую категорию)
      */
     async getLatest(): Promise<InjuryDto | null> {
         try {
             const response = await apiClient.get<InjuryDto>('/safety/injuries/latest');
+            return response.data;
+        } catch {
+            return null; // если 404 или ошибка – возвращаем null
+        }
+    },
+
+    /**
+     * Получить последнюю травму категорий П1 (Fatality) или П2 (LostWorkdayCase)
+     * Используется для сброса счётчика дней без травм
+     */
+    async getLatestSignificant(): Promise<InjuryDto | null> {
+        try {
+            const response = await apiClient.get<InjuryDto>('/safety/injuries/latest/significant');
             return response.data;
         } catch {
             return null; // если 404 или ошибка – возвращаем null
@@ -134,6 +147,60 @@ export const safetyService = {
      */
     async delete(id: string): Promise<void> {
         await apiClient.delete(`/safety/injuries/${id}`);
+    },
+
+    // ========== Методы для работы с файлами травм ==========
+
+    /**
+     * Получить список всех файлов для конкретной травмы
+     * @param injuryId - идентификатор травмы
+     */
+    async getFiles(injuryId: string): Promise<InjuryFileDto[]> {
+        const response = await apiClient.get<InjuryFileDto[]>(`/safety/injuries/${injuryId}/files`);
+        return response.data;
+    },
+
+    /**
+     * Загрузить новый файл для травмы
+     * @param injuryId - идентификатор травмы
+     * @param file - файл для загрузки
+     * @param description - описание файла (необязательно)
+     */
+    async uploadFile(injuryId: string, file: File, description?: string): Promise<InjuryFileDto> {
+        const formData = new FormData();
+        formData.append('file', file);
+        if (description) {
+            formData.append('description', description);
+        }
+
+        const response = await apiClient.post<InjuryFileDto>(`/safety/injuries/${injuryId}/files`, formData, {
+            headers: {
+                'Content-Type': 'multipart/form-data',
+            },
+        });
+        return response.data;
+    },
+
+    /**
+     * Скачать файл
+     * @param injuryId - идентификатор травмы
+     * @param fileId - идентификатор файла
+     * @returns Promise<Blob> - содержимое файла
+     */
+    async downloadFile(injuryId: string, fileId: string): Promise<Blob> {
+        const response = await apiClient.get(`/safety/injuries/${injuryId}/files/${fileId}`, {
+            responseType: 'blob',
+        });
+        return response.data;
+    },
+
+    /**
+     * Удалить файл
+     * @param injuryId - идентификатор травмы
+     * @param fileId - идентификатор файла
+     */
+    async deleteFile(injuryId: string, fileId: string): Promise<void> {
+        await apiClient.delete(`/safety/injuries/${injuryId}/files/${fileId}`);
     },
 };
 
