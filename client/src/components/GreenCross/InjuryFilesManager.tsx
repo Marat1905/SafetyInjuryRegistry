@@ -1,4 +1,9 @@
-// InjuryFilesManager.tsx
+/**
+ * Компонент для управления файлами, прикреплёнными к травме.
+ * Позволяет просматривать, скачивать, удалять существующие файлы,
+ * а также загружать новые через drag-and-drop или выбор файла.
+ * Поддерживает очередь загрузки с прогрессом.
+ */
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
     FiDownload,
@@ -14,8 +19,8 @@ import {
     FiPaperclip,
 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
-import { safetyService } from '../services/api';
-import type { InjuryFileDto } from '../types';
+import { safetyService } from '../../services/api';
+import type { InjuryFileDto } from '../../types';
 
 // ----------------------------------------------------------------------
 // Вспомогательные функции

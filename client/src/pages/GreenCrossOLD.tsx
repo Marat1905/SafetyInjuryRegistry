@@ -37,7 +37,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import toast from 'react-hot-toast';
 import { safetyService } from '../services/api';
 import type { InjuryDto } from '../types/index';
-import InjuryFilesManager from '../components/InjuryFilesManager';
+import InjuryFilesManager from '../components/GreenCross/InjuryFilesManager';
 // Импорт схем валидации из отдельного файла
 import { createInjurySchema, updateInjurySchema, type CreateInjuryFormData, type UpdateInjuryFormData } from '../schemas/validationSchemas';
 
@@ -294,7 +294,7 @@ const PendingFilesManager: React.FC<{
 // Основной компонент GreenCross
 // ----------------------------------------------------------------------
 const GreenCross: React.FC = () => {
-    const isSafetyEngineer = false;
+    const isSafetyEngineer = true;
 
     const [viewMode, setViewMode] = useState<'cross' | 'year'>('cross');
     const [currentDate, setCurrentDate] = useState(() => startOfMonth(new Date()));

@@ -1,3 +1,8 @@
+/**
+ * API-клиент для взаимодействия с бэкендом.
+ * Содержит все методы для работы с травмами и файлами.
+ * Добавляет токен авторизации и обрабатывает ошибки.
+ */
 import axios from 'axios';
 import type { InjuryDto, CreateInjuryRequest, UpdateInjuryRequest, InjuryFileDto } from '../types/index';
 
