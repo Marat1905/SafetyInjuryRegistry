@@ -1,6 +1,5 @@
 ﻿using FluentValidation.TestHelper;
 using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Http.Internal;
 using Safety.Injuries.Application.DTOs;
 using Safety.Injuries.Application.Validators;
 using Xunit;
@@ -14,7 +13,6 @@ public class UploadFileFormValidatorTests
     [Fact]
     public void Should_HaveError_WhenFileSizeExceeds10Mb()
     {
-        // Создаём массив байтов размером 11 MB
         var content = new byte[11 * 1024 * 1024];
         using var stream = new MemoryStream(content);
         var file = new FormFile(stream, 0, content.Length, "file", "test.jpg")
@@ -27,7 +25,6 @@ public class UploadFileFormValidatorTests
         result.ShouldHaveValidationErrorFor(x => x.File);
     }
 
-    // Остальные тесты без изменений
     [Fact]
     public void Should_HaveError_WhenFileIsNull()
     {
@@ -67,5 +64,21 @@ public class UploadFileFormValidatorTests
         var model = new UploadFileForm { File = file };
         var result = _validator.TestValidate(model);
         result.ShouldHaveValidationErrorFor(x => x.File);
+    }
+
+    [Fact]
+    public void Should_HaveError_WhenDescriptionExceedsMaxLength()
+    {
+        var model = new UploadFileForm
+        {
+            File = new FormFile(new MemoryStream(new byte[1]), 0, 1, "file", "test.jpg")
+            {
+                Headers = new HeaderDictionary(),
+                ContentType = "image/jpeg"
+            },
+            Description = new string('A', 501)
+        };
+        var result = _validator.TestValidate(model);
+        result.ShouldHaveValidationErrorFor(x => x.Description);
     }
 }

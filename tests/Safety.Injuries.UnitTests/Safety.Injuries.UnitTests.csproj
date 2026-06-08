@@ -18,6 +18,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\Safety.Injuries.API\Safety.Injuries.API.csproj" />
     <ProjectReference Include="..\..\src\Safety.Injuries.Application\Safety.Injuries.Application.csproj" />
     <ProjectReference Include="..\..\src\Safety.Injuries.Domain\Safety.Injuries.Domain.csproj" />
   </ItemGroup>

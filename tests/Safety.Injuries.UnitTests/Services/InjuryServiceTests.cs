@@ -7,6 +7,7 @@ using Safety.Injuries.Domain.Entities;
 using Safety.Injuries.Domain.Enums;
 using Safety.Injuries.Domain.Interfaces;
 using Safety.Injuries.UnitTests.Helpers;
+using System.Linq.Expressions;
 using Xunit;
 
 namespace Safety.Injuries.UnitTests.Services;
@@ -27,20 +28,32 @@ public class InjuryServiceTests
     [Fact]
     public async Task GetByMonthAsync_ShouldReturnMappedInjuries()
     {
-        // Arrange
         var injuries = new List<Injury>
         {
             new() { Id = Guid.NewGuid(), Date = new DateTime(2026, 6, 15), Type = "Contusion", Description = "Test", Category = InjuryCategory.Fatality }
         };
-        _repositoryMock.Setup(r => r.FindAsync(It.IsAny<System.Linq.Expressions.Expression<Func<Injury, bool>>>()))
+        _repositoryMock.Setup(r => r.FindAsync(It.IsAny<Expression<Func<Injury, bool>>>()))
             .ReturnsAsync(injuries);
 
-        // Act
         var result = await _service.GetByMonthAsync(2026, 6);
 
-        // Assert
         result.Should().HaveCount(1);
         result.First().Type.Should().Be("Contusion");
+    }
+
+    [Fact]
+    public async Task GetByYearAsync_ShouldReturnMappedInjuries()
+    {
+        var injuries = new List<Injury>
+        {
+            new() { Id = Guid.NewGuid(), Date = new DateTime(2026, 1, 1), Type = "Fracture" }
+        };
+        _repositoryMock.Setup(r => r.FindAsync(It.IsAny<Expression<Func<Injury, bool>>>()))
+            .ReturnsAsync(injuries);
+
+        var result = await _service.GetByYearAsync(2026);
+
+        result.Should().HaveCount(1);
     }
 
     [Fact]
@@ -59,9 +72,7 @@ public class InjuryServiceTests
     public async Task GetLatestAsync_WhenNone_ShouldReturnNull()
     {
         _repositoryMock.Setup(r => r.GetLatestAsync()).ReturnsAsync((Injury?)null);
-
         var result = await _service.GetLatestAsync();
-
         result.Should().BeNull();
     }
 
@@ -73,7 +84,6 @@ public class InjuryServiceTests
             .ReturnsAsync(injury);
 
         var result = await _service.GetLatestSignificantAsync();
-
         result.Should().NotBeNull();
     }
 
@@ -82,12 +92,7 @@ public class InjuryServiceTests
     {
         var year = 2026;
         var month = 6;
-        var startOfMonth = new DateTime(year, month, 1, 0, 0, 0, DateTimeKind.Utc);
-        var endOfMonth = startOfMonth.AddMonths(1).AddDays(-1);
-        var startOfYear = new DateTime(year, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-        var endOfYear = new DateTime(year, 12, 31, 0, 0, 0, DateTimeKind.Utc);
-
-        _repositoryMock.Setup(r => r.CountAsync(It.IsAny<System.Linq.Expressions.Expression<Func<Injury, bool>>>()))
+        _repositoryMock.Setup(r => r.CountAsync(It.IsAny<Expression<Func<Injury, bool>>>()))
             .ReturnsAsync(2);
         var lastInjury = new Injury { Date = DateTime.UtcNow.AddDays(-5), Category = InjuryCategory.Fatality };
         _repositoryMock.Setup(r => r.GetLatestByCategoriesAsync(It.IsAny<IEnumerable<InjuryCategory>>()))
@@ -99,6 +104,22 @@ public class InjuryServiceTests
         result.YearSignificantCount.Should().Be(2);
         result.LastSignificantDate.Should().Be(lastInjury.Date.ToString("yyyy-MM-dd"));
         result.DaysWithoutInjury.Should().BeGreaterThanOrEqualTo(0);
+    }
+
+    [Fact]
+    public async Task GetStatisticsAsync_WhenNoSignificantInjuries_ShouldReturnZeroDays()
+    {
+        _repositoryMock.Setup(r => r.CountAsync(It.IsAny<Expression<Func<Injury, bool>>>()))
+            .ReturnsAsync(0);
+        _repositoryMock.Setup(r => r.GetLatestByCategoriesAsync(It.IsAny<IEnumerable<InjuryCategory>>()))
+            .ReturnsAsync((Injury?)null);
+
+        var result = await _service.GetStatisticsAsync(2026, 6);
+
+        result.MonthSignificantCount.Should().Be(0);
+        result.YearSignificantCount.Should().Be(0);
+        result.LastSignificantDate.Should().BeNull();
+        result.DaysWithoutInjury.Should().Be(0);
     }
 
     [Fact]
@@ -128,7 +149,6 @@ public class InjuryServiceTests
     public async Task UpdateAsync_WhenInjuryNotFound_ShouldThrowKeyNotFoundException()
     {
         _repositoryMock.Setup(r => r.GetByIdAsync(It.IsAny<Guid>())).ReturnsAsync((Injury?)null);
-
         await Assert.ThrowsAsync<KeyNotFoundException>(() => _service.UpdateAsync(Guid.NewGuid(), new UpdateInjuryRequest()));
     }
 
@@ -139,11 +159,11 @@ public class InjuryServiceTests
         _repositoryMock.Setup(r => r.GetByIdAsync(existing.Id)).ReturnsAsync(existing);
         _repositoryMock.Setup(r => r.UpdateAsync(It.IsAny<Injury>())).ReturnsAsync((Injury i) => i);
 
-        var updateRequest = new UpdateInjuryRequest { Type = "New Type", Category = "П2" };
+        var updateRequest = new UpdateInjuryRequest { Type = "New Type", Description = "New desc", Category = "П2" };
         var result = await _service.UpdateAsync(existing.Id, updateRequest);
 
         result.Type.Should().Be("New Type");
-        result.Description.Should().Be("Old desc");
+        result.Description.Should().Be("New desc");
         existing.Category.Should().Be(InjuryCategory.LostWorkdayCase);
     }
 
@@ -157,5 +177,12 @@ public class InjuryServiceTests
         await _service.DeleteAsync(injury.Id);
 
         _repositoryMock.Verify(r => r.DeleteAsync(injury), Times.Once);
+    }
+
+    [Fact]
+    public async Task DeleteAsync_WhenNotFound_ShouldThrow()
+    {
+        _repositoryMock.Setup(r => r.GetByIdAsync(It.IsAny<Guid>())).ReturnsAsync((Injury?)null);
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => _service.DeleteAsync(Guid.NewGuid()));
     }
 }

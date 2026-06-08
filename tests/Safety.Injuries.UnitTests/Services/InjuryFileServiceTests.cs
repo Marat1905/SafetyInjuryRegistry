@@ -28,7 +28,6 @@ public class InjuryFileServiceTests
     public async Task GetFilesByInjuryIdAsync_WhenInjuryMissing_ThrowsKeyNotFound()
     {
         _injuryRepoMock.Setup(r => r.ExistsAsync(It.IsAny<Guid>())).ReturnsAsync(false);
-
         await Assert.ThrowsAsync<KeyNotFoundException>(() => _service.GetFilesByInjuryIdAsync(Guid.NewGuid()));
     }
 
@@ -52,8 +51,6 @@ public class InjuryFileServiceTests
         var injuryId = Guid.NewGuid();
         var injury = new Injury { Id = injuryId };
         _injuryRepoMock.Setup(r => r.GetByIdAsync(injuryId)).ReturnsAsync(injury);
-
-        // Добавить настройку мока для AddAsync
         _fileRepoMock.Setup(r => r.AddAsync(It.IsAny<InjuryFile>()))
             .ReturnsAsync((InjuryFile f) => f);
 
