@@ -16,6 +16,9 @@ public interface IInjuryService
     /// <summary>Получить последнюю травму категории П1 или П2 (для сброса счётчика)</summary>
     Task<InjuryDto?> GetLatestSignificantAsync();
 
+    /// <summary>Получить агрегированную статистику по значимым травмам (П1/П2)</summary>
+    Task<InjuryStatisticsDto> GetStatisticsAsync(int year, int month);
+
     /// <summary>Создать новую травму</summary>
     Task<InjuryDto> CreateAsync(CreateInjuryRequest request);
 

@@ -2,7 +2,6 @@
  * Хук для загрузки данных о травмах:
  * - травмы за месяц (по текущей дате)
  * - травмы за год
- * - последняя значимая травма (П1/П2)
  * Также обеспечивает фоновую синхронизацию каждые 10 минут.
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -13,7 +12,6 @@ import type { InjuryDto } from '../types';
 export const useInjuryData = (currentDate: Date) => {
     const [injuriesMonth, setInjuriesMonth] = useState<InjuryDto[]>([]);
     const [injuriesYear, setInjuriesYear] = useState<InjuryDto[]>([]);
-    const [latestSignificantInjury, setLatestSignificantInjury] = useState<InjuryDto | null>(null);
     const [loading, setLoading] = useState(false);
     const currentDateRef = useRef(currentDate);
 
@@ -27,14 +25,12 @@ export const useInjuryData = (currentDate: Date) => {
         const month = date.getMonth() + 1;
         if (!background) setLoading(true);
         try {
-            const [monthData, yearData, latestSig] = await Promise.all([
+            const [monthData, yearData] = await Promise.all([
                 safetyService.getByMonth(year, month),
                 safetyService.getByYear(year),
-                safetyService.getLatestSignificant(),
             ]);
             setInjuriesMonth(monthData);
             setInjuriesYear(yearData);
-            setLatestSignificantInjury(latestSig);
         } catch (error) {
             console.error('Ошибка при обновлении данных:', error);
         } finally {
@@ -53,21 +49,10 @@ export const useInjuryData = (currentDate: Date) => {
         return () => clearInterval(intervalId);
     }, [fetchData]);
 
-    const refreshLatestSignificant = useCallback(async () => {
-        try {
-            const latest = await safetyService.getLatestSignificant();
-            setLatestSignificantInjury(latest);
-        } catch (error) {
-            console.error('Ошибка при обновлении последней значимой травмы', error);
-        }
-    }, []);
-
     return {
         injuriesMonth,
         injuriesYear,
-        latestSignificantInjury,
         loading,
         refetch: () => fetchData(false),
-        refreshLatestSignificant,
     };
 };

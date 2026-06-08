@@ -10,6 +10,7 @@ import { FiGrid, FiCalendar as FiYearIcon, FiChevronLeft, FiChevronRight } from 
 import { Toaster } from 'react-hot-toast';
 import { useInjuryData } from '../../hooks/useInjuryData';
 import { useNavigation } from '../../hooks/useNavigation';
+import { useStatistics } from '../../hooks/useStatistics';
 import CrossCalendar from './CrossCalendar';
 import YearCalendarView from './YearCalendarView';
 import StatsPanel from './StatsPanel';
@@ -27,15 +28,22 @@ const GreenCross: React.FC = () => {
     // Управление текущей датой (месяц для креста, год для годового календаря)
     const { currentDate, goPrev, goNext } = useNavigation(viewMode);
 
-    // Загрузка данных: травмы за месяц, за год, последняя значимая травма
+    // Загрузка данных: травмы за месяц и за год (для календарей)
     const {
         injuriesMonth,
         injuriesYear,
-        latestSignificantInjury,
-        loading,
-        refetch,
-        refreshLatestSignificant,
+        loading: injuriesLoading,
+        refetch: refetchInjuries,
     } = useInjuryData(currentDate);
+
+    // Статистика по значимым травмам
+    const yearNum = currentDate.getFullYear();
+    const monthNum = currentDate.getMonth() + 1;
+    const {
+        statistics,
+        loading: statisticsLoading,
+        refreshStatistics,
+    } = useStatistics(yearNum, monthNum);
 
     // Состояние модального окна
     const [modalOpen, setModalOpen] = useState(false);
@@ -69,8 +77,13 @@ const GreenCross: React.FC = () => {
         setModalOpen(false);
         setSelectedDate(null);
         setSelectedInjury(null);
-        refetch(); // обновляем данные после возможных изменений
-    }, [refetch]);
+        // Обновляем травмы для календарей и статистику
+        refetchInjuries();
+        refreshStatistics();
+    }, [refetchInjuries, refreshStatistics]);
+
+    // Общий флаг загрузки (показываем спиннер, пока загружается что-то одно)
+    const loading = injuriesLoading || statisticsLoading;
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 p-4 md:p-6">
@@ -128,11 +141,7 @@ const GreenCross: React.FC = () => {
                 <div className="flex flex-col lg:flex-row gap-6">
                     {/* Левая колонка */}
                     <div className="lg:w-80 space-y-5">
-                        <StatsPanel
-                            injuriesMonth={injuriesMonth}
-                            injuriesYear={injuriesYear}
-                            latestSignificantInjury={latestSignificantInjury}
-                        />
+                        <StatsPanel statistics={statistics} />
                         <LegendPanel />
                         {isSafetyEngineer && (
                             <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-5">
@@ -176,13 +185,11 @@ const GreenCross: React.FC = () => {
                     isSafetyEngineer={isSafetyEngineer}
                     onClose={handleModalClose}
                     onInjuryChanged={() => {
-                        refetch();
-                        refreshLatestSignificant();
+                        refetchInjuries();
+                        refreshStatistics();
                     }}
                 />
             )}
-
-            {/* Toaster для уведомлений (тема уже задана в App) – здесь не нужен, так как App уже предоставляет глобальный Toaster */}
         </div>
     );
 };

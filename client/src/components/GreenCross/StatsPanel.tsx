@@ -1,45 +1,29 @@
 /**
  * Панель статистики: количество травм П1+П2 за месяц, за год, дни без травм.
+ * Теперь получает данные через пропс statistics из бэкенда.
  */
-import React, { useMemo } from 'react';
-import { differenceInCalendarDays, startOfDay, format } from 'date-fns';
+import React from 'react';
+import { format } from 'date-fns';
 import { FiCalendar, FiActivity, FiClock } from 'react-icons/fi';
-import { isSignificantCategory } from '../../utils/injuryHelpers';
-import type { InjuryDto } from '../../types';
 
-interface StatsPanelProps {
-    injuriesMonth: InjuryDto[];
-    injuriesYear: InjuryDto[];
-    latestSignificantInjury: InjuryDto | null;
+interface Statistics {
+    monthSignificantCount: number;
+    yearSignificantCount: number;
+    lastSignificantDate: string | null;
+    daysWithoutInjury: number;
 }
 
-const StatsPanel: React.FC<StatsPanelProps> = ({
-    injuriesMonth,
-    injuriesYear,
-    latestSignificantInjury,
-}) => {
-    const stats = useMemo(() => {
-        const monthSignificant = injuriesMonth.filter((inj) => isSignificantCategory(inj.category));
-        const yearSignificant = injuriesYear.filter((inj) => isSignificantCategory(inj.category));
+interface StatsPanelProps {
+    statistics: Statistics;
+}
 
-        let daysWithoutInjury = 0;
-        let lastSignificantDate: Date | null = null;
-
-        if (latestSignificantInjury) {
-            const lastDate = new Date(latestSignificantInjury.date);
-            const today = startOfDay(new Date());
-            daysWithoutInjury = differenceInCalendarDays(today, lastDate) - 1;
-            if (daysWithoutInjury < 0) daysWithoutInjury = 0;
-            lastSignificantDate = lastDate;
-        }
-
-        return {
-            monthInjuries: monthSignificant.length,
-            yearInjuries: yearSignificant.length,
-            daysWithoutInjury,
-            lastSignificantDate,
-        };
-    }, [injuriesMonth, injuriesYear, latestSignificantInjury]);
+const StatsPanel: React.FC<StatsPanelProps> = ({ statistics }) => {
+    const {
+        monthSignificantCount,
+        yearSignificantCount,
+        lastSignificantDate,
+        daysWithoutInjury,
+    } = statistics;
 
     return (
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-5">
@@ -53,7 +37,7 @@ const StatsPanel: React.FC<StatsPanelProps> = ({
                     </div>
                     <div>
                         <div className="text-sm text-gray-500 dark:text-gray-400">Травм П1-П2 за месяц</div>
-                        <div className="text-3xl font-bold text-gray-800 dark:text-white">{stats.monthInjuries}</div>
+                        <div className="text-3xl font-bold text-gray-800 dark:text-white">{monthSignificantCount}</div>
                     </div>
                 </div>
                 <div className="flex items-center space-x-4">
@@ -62,7 +46,7 @@ const StatsPanel: React.FC<StatsPanelProps> = ({
                     </div>
                     <div>
                         <div className="text-sm text-gray-500 dark:text-gray-400">Травм П1-П2 за год</div>
-                        <div className="text-3xl font-bold text-gray-800 dark:text-white">{stats.yearInjuries}</div>
+                        <div className="text-3xl font-bold text-gray-800 dark:text-white">{yearSignificantCount}</div>
                     </div>
                 </div>
                 <div className="flex items-center space-x-4">
@@ -71,10 +55,10 @@ const StatsPanel: React.FC<StatsPanelProps> = ({
                     </div>
                     <div>
                         <div className="text-sm text-gray-500 dark:text-gray-400">Дней без травм (П1+П2)</div>
-                        <div className="text-3xl font-bold text-gray-800 dark:text-white">{stats.daysWithoutInjury}</div>
-                        {stats.lastSignificantDate && (
+                        <div className="text-3xl font-bold text-gray-800 dark:text-white">{daysWithoutInjury}</div>
+                        {lastSignificantDate && (
                             <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                                Последняя травма: {format(stats.lastSignificantDate, 'dd.MM.yyyy')}
+                                Последняя травма: {format(new Date(lastSignificantDate), 'dd.MM.yyyy')}
                             </div>
                         )}
                     </div>

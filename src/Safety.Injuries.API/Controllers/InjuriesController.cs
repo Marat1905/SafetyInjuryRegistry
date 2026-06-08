@@ -144,4 +144,24 @@ public class InjuriesController : ControllerBase
             return NotFound(ex.Message);
         }
     }
+
+    /// <summary>
+    /// Получить статистику по значимым травмам (П1/П2) за указанные месяц и год,
+    /// а также количество дней без травм с момента последней значимой травмы.
+    /// </summary>
+    /// <param name="year">Год (например, 2026)</param>
+    /// <param name="month">Месяц (от 1 до 12)</param>
+    /// <returns>Статистика по значимым травмам</returns>
+    [HttpGet("statistics")]
+    [ProducesResponseType(typeof(InjuryStatisticsDto), 200)]
+    public async Task<IActionResult> GetStatistics([FromQuery] int year, [FromQuery] int month)
+    {
+        if (year < 2000 || year > 2100)
+            return BadRequest("Некорректный год");
+        if (month < 1 || month > 12)
+            return BadRequest("Некорректный месяц (1-12)");
+
+        var statistics = await _injuryService.GetStatisticsAsync(year, month);
+        return Ok(statistics);
+    }
 }

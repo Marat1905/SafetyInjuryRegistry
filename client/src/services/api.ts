@@ -207,6 +207,23 @@ export const safetyService = {
     async deleteFile(injuryId: string, fileId: string): Promise<void> {
         await apiClient.delete(`/safety/injuries/${injuryId}/files/${fileId}`);
     },
+
+    /**
+ * Получить статистику по значимым травмам (П1/П2) за указанные месяц и год
+ * @param year - год
+ * @param month - месяц (1-12)
+ */
+    async getStatistics(year: number, month: number): Promise<{
+        monthSignificantCount: number;
+        yearSignificantCount: number;
+        lastSignificantDate: string | null;
+        daysWithoutInjury: number;
+    }> {
+        const response = await apiClient.get('/safety/injuries/statistics', {
+            params: { year, month }
+        });
+        return response.data;
+    }
 };
 
 export default safetyService;
