@@ -1,9 +1,6 @@
 ﻿using AutoMapper;
 using FluentAssertions;
 using Moq;
-using Safety.Injuries.Application.DTOs;
-using Safety.Injuries.Application.Interfaces;
-using Safety.Injuries.Application.Mapping;
 using Safety.Injuries.Application.Services;
 using Safety.Injuries.Domain.Entities;
 using Safety.Injuries.Domain.Interfaces;
