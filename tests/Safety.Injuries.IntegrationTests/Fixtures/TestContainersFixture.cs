@@ -14,7 +14,7 @@ public class TestContainersFixture : IAsyncLifetime
     {
         _postgresContainer = new PostgreSqlBuilder()
             .WithImage("postgres:16-alpine")
-            .WithDatabase("asset_tracker_test")
+            .WithDatabase("safety_injuries_test")
             .WithUsername("test_user")
             .WithPassword("test_password")
             .WithCleanUp(true)
@@ -26,7 +26,6 @@ public class TestContainersFixture : IAsyncLifetime
         await _postgresContainer.StartAsync();
         ConnectionString = _postgresContainer.GetConnectionString();
 
-        // Применяем миграции или создаём схему
         var options = new DbContextOptionsBuilder<SafetyInjuriesDbContext>()
             .UseNpgsql(ConnectionString)
             .Options;
