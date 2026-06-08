@@ -1,4 +1,6 @@
-﻿namespace Safety.Injuries.Application.DTOs;
+﻿using Microsoft.AspNetCore.Http;
+
+namespace Safety.Injuries.Application.DTOs;
 
 /// <summary>
 /// Информация о файле травмы (ответ)
@@ -47,4 +49,20 @@ public class FileInfoDto
     public long Size { get; set; }
     public string? Description { get; set; }
     public DateTime UploadedAt { get; set; }
+}
+
+/// <summary>
+/// DTO для загрузки файла из формы
+/// </summary>
+public class UploadFileForm
+{
+    /// <summary>
+    /// Описание файла (необязательно)
+    /// </summary>
+    public string? Description { get; set; }
+
+    /// <summary>
+    /// Файл для загрузки
+    /// </summary>
+    public IFormFile File { get; set; } = null!;
 }
