@@ -23,6 +23,10 @@ interface InjuryModalProps {
 
 type ModalMode = 'view' | 'create' | 'edit';
 
+// Константы валидации файлов – соответствуют бэкенду
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
+const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'application/pdf'];
+
 const InjuryModal: React.FC<InjuryModalProps> = ({
     selectedDate,
     selectedInjury,
@@ -48,6 +52,48 @@ const InjuryModal: React.FC<InjuryModalProps> = ({
     const handleClose = () => {
         setPendingFiles([]);
         onClose();
+    };
+
+    // Валидация одного файла (соответствует бэкенд-валидатору UploadFileFormValidator)
+    const validateFile = (file: File): { valid: boolean; error?: string } => {
+        if (file.size > MAX_FILE_SIZE) {
+            return { valid: false, error: `Файл "${file.name}" превышает 10 МБ` };
+        }
+        if (!ALLOWED_MIME_TYPES.includes(file.type.toLowerCase())) {
+            return { valid: false, error: `Файл "${file.name}" имеет недопустимый тип. Разрешены: JPEG, PNG, PDF` };
+        }
+        return { valid: true };
+    };
+
+    // Добавление файлов в очередь с валидацией
+    const addPendingFiles = (files: File[]) => {
+        const validFiles: File[] = [];
+        for (const file of files) {
+            const { valid, error } = validateFile(file);
+            if (!valid) {
+                toast.error(error);
+            } else {
+                validFiles.push(file);
+            }
+        }
+        if (validFiles.length === 0) return;
+
+        const newFiles = validFiles.map((file) => ({
+            id: `${Date.now()}-${Math.random()}-${file.name}`,
+            file,
+            description: '',
+        }));
+        setPendingFiles((prev) => [...prev, ...newFiles]);
+        toast.success(`Добавлено файлов: ${validFiles.length}`);
+    };
+
+    const removePendingFile = (id: string) => {
+        setPendingFiles((prev) => prev.filter((f) => f.id !== id));
+        toast('Файл удалён из очереди', { icon: '🗑️' });
+    };
+
+    const updatePendingFileDescription = (id: string, description: string) => {
+        setPendingFiles((prev) => prev.map((f) => (f.id === id ? { ...f, description } : f)));
     };
 
     // Создание травмы (вызывается из формы)
@@ -118,24 +164,6 @@ const InjuryModal: React.FC<InjuryModalProps> = ({
             console.error(error);
             toast.error('Не удалось удалить травму');
         }
-    };
-
-    // Вспомогательные функции для работы с pendingFiles
-    const addPendingFiles = (files: File[]) => {
-        const newFiles = files.map((file) => ({
-            id: `${Date.now()}-${Math.random()}-${file.name}`,
-            file,
-            description: '',
-        }));
-        setPendingFiles((prev) => [...prev, ...newFiles]);
-    };
-
-    const removePendingFile = (id: string) => {
-        setPendingFiles((prev) => prev.filter((f) => f.id !== id));
-    };
-
-    const updatePendingFileDescription = (id: string, description: string) => {
-        setPendingFiles((prev) => prev.map((f) => (f.id === id ? { ...f, description } : f)));
     };
 
     // Рендер содержимого в зависимости от режима
