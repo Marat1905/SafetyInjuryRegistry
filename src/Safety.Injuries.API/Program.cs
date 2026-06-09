@@ -1,13 +1,14 @@
 using FluentValidation;
+using FluentValidation.AspNetCore;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using Safety.Injuries.API.Auth;
 using Safety.Injuries.API.Middleware;
+using Safety.Injuries.API.Services;
 using Safety.Injuries.Application;
 using Safety.Injuries.Application.Validators;
 using Safety.Injuries.Infrastructure;
 using Safety.Injuries.Infrastructure.Data;
-using FluentValidation.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -26,7 +27,7 @@ builder.Services.AddSwaggerGen();
 // Add layers
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
-
+builder.Services.AddSingleton<IOrganizationNameDecryptor, OrganizationNameDecryptor>();
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, DynamicAuthorizationPolicyProvider>();
 
 builder.Services.AddSignalR(options =>

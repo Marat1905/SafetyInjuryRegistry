@@ -1,6 +1,6 @@
 /**
  * API-клиент для взаимодействия с бэкендом.
- * Содержит все методы для работы с травмами и файлами.
+ * Содержит все методы для работы с травмами, файлами и организацией.
  * Добавляет токен авторизации и обрабатывает ошибки.
  */
 import axios from 'axios';
@@ -223,6 +223,22 @@ export const safetyService = {
             params: { year, month }
         });
         return response.data;
+    },
+
+    // ========== Метод для получения названия организации ==========
+
+    /**
+     * Получить расшифрованное название организации
+     * @returns название организации или пустую строку при ошибке
+     */
+    async getOrganizationName(): Promise<string> {
+        try {
+            const response = await apiClient.get<{ organizationName: string }>('/organization/name');
+            return response.data.organizationName;
+        } catch (error) {
+            console.error('Ошибка при получении названия организации:', error);
+            return '';
+        }
     }
 };
 
