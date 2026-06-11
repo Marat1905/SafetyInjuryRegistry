@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    io.kompose.service: safety-injuries-db
+  name: safety-injuries-db
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: safety-injuries-db
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        io.kompose.service: safety-injuries-db
+    spec:
+      imagePullSecrets:
+        - name: ghcr-secret
+      containers:
+        - env:
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+            - name: POSTGRES_DB
+              value: safetyinjuries
+            - name: POSTGRES_PASSWORD
+              value: "12345678"
+            - name: POSTGRES_USER
+              value: safetyuser
+          image: postgres:17-alpine
+          name: safety-injuries-db
+          ports:
+            - containerPort: 5432
+              protocol: TCP
+          volumeMounts:
+            - mountPath: /var/lib/postgresql/data/pgdata
+              name: safety-injuries-db-data
+      restartPolicy: Always
+      volumes:
+        - name: safety-injuries-db-data
+          persistentVolumeClaim:
+            claimName: safety-injuries-db-data

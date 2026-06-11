@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    io.kompose.service: safety-injuries-api
+  name: safety-injuries-api
+spec:
+  type: NodePort
+  ports:
+    - name: "http-web-api"
+      nodePort: 30010
+      port: 8080
+      targetPort: 8080
+  selector:
+    io.kompose.service: safety-injuries-api

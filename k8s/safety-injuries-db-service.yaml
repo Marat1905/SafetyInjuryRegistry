@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    io.kompose.service: safety-injuries-db
+  name: safety-injuries-db
+spec:
+  type: NodePort
+  ports:
+    - name: "http-db"
+      nodePort: 30152
+      port: 5432
+      targetPort: 5432
+  selector:
+    io.kompose.service: safety-injuries-db
