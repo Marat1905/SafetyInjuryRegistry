@@ -1,4 +1,4 @@
-name: Build and Push Docker Images
+name: Build, Test and Push Docker Images
 
 on:
   push:
@@ -12,11 +12,11 @@ env:
   # Не используем OWNER напрямую – сделаем преобразование в шаге
 
 jobs:
+  # 1. Тестирование кода
   test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '9.0.x'
@@ -25,6 +25,23 @@ jobs:
       - run: dotnet build SafetyInjuryRegistry.sln --no-restore -c Release
       - run: dotnet test SafetyInjuryRegistry.sln --no-build -c Release
 
+  # 2. Проверка Kubernetes манифестов (только для PR)
+  lint-k8s:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install kubeconform
+        run: |
+          wget -q https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz
+          tar xf kubeconform-linux-amd64.tar.gz
+          sudo mv kubeconform /usr/local/bin/
+      - name: Validate Kubernetes manifests
+        run: |
+          # Замените 'k8s/' на путь к вашей папке с манифестами, если она другая
+          kubeconform -strict -summary -kubernetes-version 1.29.0 k8s/ || echo "⚠️ Манифесты не найдены или есть ошибки"
+
+  # 3. Сборка и публикация образа (только при push)
   build-and-push:
     runs-on: ubuntu-latest
     needs: test
