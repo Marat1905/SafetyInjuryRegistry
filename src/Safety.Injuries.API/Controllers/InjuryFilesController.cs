@@ -46,40 +46,27 @@ public class InjuryFilesController : ControllerBase
     /// Загрузить новый файл для травмы (доступно Safety/Admin)
     /// </summary>
     /// <param name="injuryId">Идентификатор травмы</param>
-    /// <param name="description">Описание файла (в form-data)</param>
-    /// <param name="file">Файл (form-data)</param>
+    /// <param name="uploadForm">Данные загружаемого файла (описание и сам файл)</param>
     [HttpPost]
     //[Authorize(Policy = "SafetyPolicy")]
     [ProducesResponseType(typeof(InjuryFileDto), 201)]
     [ProducesResponseType(400)]
     [ProducesResponseType(404)]
     [RequestSizeLimit(10 * 1024 * 1024)] // Лимит 10 MB
-    public async Task<IActionResult> UploadFile(
-        Guid injuryId,
-        [FromForm] string? description,
-        [FromForm] IFormFile file)
+    public async Task<IActionResult> UploadFile(Guid injuryId, [FromForm] UploadFileForm uploadForm)
     {
-        if (file == null || file.Length == 0)
-            return BadRequest("Файл не выбран или пуст");
-
-        // Дополнительная валидация размера
-        if (file.Length > 10 * 1024 * 1024)
-            return BadRequest("Размер файла не должен превышать 10 MB");
-
-        // Валидация расширения/типа (опционально)
-        var allowedTypes = new[] { "image/jpeg", "image/png", "application/pdf", "image/jpg" };
-        if (!allowedTypes.Contains(file.ContentType))
-            return BadRequest("Неподдерживаемый тип файла. Разрешены: JPEG, PNG, PDF.");
+        if (!ModelState.IsValid)
+            return BadRequest(ModelState);
 
         try
         {
-            using var stream = file.OpenReadStream();
+            using var stream = uploadForm.File.OpenReadStream();
             var result = await _fileService.UploadFileAsync(
                 injuryId,
                 stream,
-                file.FileName,
-                file.ContentType,
-                description);
+                uploadForm.File.FileName,
+                uploadForm.File.ContentType,
+                uploadForm.Description);
 
             return CreatedAtAction(nameof(GetFiles), new { injuryId = injuryId }, result);
         }

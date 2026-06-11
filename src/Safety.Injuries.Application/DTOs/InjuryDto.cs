@@ -45,10 +45,10 @@ public class CreateInjuryRequest
 public class UpdateInjuryRequest
 {
     /// <summary>Тип травмы</summary>
-    public string Type { get; set; } = string.Empty;
+    public string Type { get; set; }
 
     /// <summary>Описание</summary>
-    public string Description { get; set; } = string.Empty;
+    public string Description { get; set; } 
 
     /// <summary>Категория происшествия (опционально – если не указана, остаётся прежней)</summary>
     public string? Category { get; set; }

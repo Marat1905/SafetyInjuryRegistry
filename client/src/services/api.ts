@@ -1,3 +1,8 @@
+/**
+ * API-клиент для взаимодействия с бэкендом.
+ * Содержит все методы для работы с травмами, файлами и организацией.
+ * Добавляет токен авторизации и обрабатывает ошибки.
+ */
 import axios from 'axios';
 import type { InjuryDto, CreateInjuryRequest, UpdateInjuryRequest, InjuryFileDto } from '../types/index';
 
@@ -202,6 +207,39 @@ export const safetyService = {
     async deleteFile(injuryId: string, fileId: string): Promise<void> {
         await apiClient.delete(`/safety/injuries/${injuryId}/files/${fileId}`);
     },
+
+    /**
+ * Получить статистику по значимым травмам (П1/П2) за указанные месяц и год
+ * @param year - год
+ * @param month - месяц (1-12)
+ */
+    async getStatistics(year: number, month: number): Promise<{
+        monthSignificantCount: number;
+        yearSignificantCount: number;
+        lastSignificantDate: string | null;
+        daysWithoutInjury: number;
+    }> {
+        const response = await apiClient.get('/safety/injuries/statistics', {
+            params: { year, month }
+        });
+        return response.data;
+    },
+
+    // ========== Метод для получения названия организации ==========
+
+    /**
+     * Получить расшифрованное название организации
+     * @returns название организации или пустую строку при ошибке
+     */
+    async getOrganizationName(): Promise<string> {
+        try {
+            const response = await apiClient.get<{ organizationName: string }>('/organization/name');
+            return response.data.organizationName;
+        } catch (error) {
+            console.error('Ошибка при получении названия организации:', error);
+            return '';
+        }
+    }
 };
 
 export default safetyService;

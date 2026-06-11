@@ -10,7 +10,8 @@ public class CreateInjuryRequestValidator : AbstractValidator<CreateInjuryReques
     {
         RuleFor(x => x.Date)
             .NotEmpty().WithMessage("Дата обязательна")
-            .Must(BeValidDate).WithMessage("Некорректный формат даты. Используйте YYYY-MM-DD");
+            .Must(BeValidDate).WithMessage("Некорректный формат даты. Используйте YYYY-MM-DD")
+            .Must(BeNotFutureDate).WithMessage("Дата не может быть в будущем");
 
         RuleFor(x => x.Type)
             .NotEmpty().WithMessage("Тип травмы обязателен")
@@ -25,9 +26,15 @@ public class CreateInjuryRequestValidator : AbstractValidator<CreateInjuryReques
             .Must(BeValidCategory).WithMessage("Недопустимая категория. Допустимые значения: П1,П2,П3,П4,П5,П6 или Fatality,LostWorkdayCase,FirstAidCase,AccidentOrNearMiss,PreventedIncident,ThirdPartyInjury");
     }
 
-    private static bool BeValidDate(string date)
+    private static bool BeValidDate(string date) => DateTime.TryParse(date, out _);
+
+    private static bool BeNotFutureDate(string date)
     {
-        return DateTime.TryParse(date, out _);
+        if (!DateTime.TryParse(date, out var parsedDate))
+            return false; // формат уже проверяется в BeValidDate, но на всякий случай
+
+        // Сравниваем только дату (без времени) в UTC
+        return parsedDate.Date <= DateTime.UtcNow.Date;
     }
 
     private static bool BeValidCategory(string category)

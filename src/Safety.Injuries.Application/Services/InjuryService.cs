@@ -46,6 +46,52 @@ public class InjuryService : IInjuryService
         return injury == null ? null : _mapper.Map<InjuryDto>(injury);
     }
 
+    public async Task<InjuryStatisticsDto> GetStatisticsAsync(int year, int month)
+    {
+        // Определяем границы месяца (UTC)
+        var startOfMonth = new DateTime(year, month, 1, 0, 0, 0, DateTimeKind.Utc);
+        var endOfMonth = startOfMonth.AddMonths(1).AddDays(-1);
+
+        // Границы года
+        var startOfYear = new DateTime(year, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var endOfYear = new DateTime(year, 12, 31, 0, 0, 0, DateTimeKind.Utc);
+
+        var significantCategories = new[] { InjuryCategory.Fatality, InjuryCategory.LostWorkdayCase };
+
+        // Количество значимых травм за месяц
+        var monthSignificantCount = await _repository.CountAsync(i =>
+            i.Date >= startOfMonth && i.Date <= endOfMonth &&
+            significantCategories.Contains(i.Category));
+
+        // Количество значимых травм за год
+        var yearSignificantCount = await _repository.CountAsync(i =>
+            i.Date >= startOfYear && i.Date <= endOfYear &&
+            significantCategories.Contains(i.Category));
+
+        // Последняя значимая травма (глобально, не только за год)
+        var lastSignificant = await _repository.GetLatestByCategoriesAsync(significantCategories);
+
+        string? lastSignificantDate = null;
+        int daysWithoutInjury = 0;
+
+        if (lastSignificant != null)
+        {
+            lastSignificantDate = lastSignificant.Date.ToString("yyyy-MM-dd");
+            var today = DateTime.UtcNow.Date;
+            var lastDate = lastSignificant.Date.Date;
+            daysWithoutInjury = (today - lastDate).Days - 1;
+            if (daysWithoutInjury < 0) daysWithoutInjury = 0;
+        }
+
+        return new InjuryStatisticsDto
+        {
+            MonthSignificantCount = monthSignificantCount,
+            YearSignificantCount = yearSignificantCount,
+            LastSignificantDate = lastSignificantDate,
+            DaysWithoutInjury = daysWithoutInjury
+        };
+    }
+
     public async Task<InjuryDto> CreateAsync(CreateInjuryRequest request)
     {
         // Парсим дату из строки, игнорируя время и часовой пояс

@@ -19,18 +19,25 @@ public class MappingProfile : Profile
         // CreateInjuryRequest -> Injury
         CreateMap<CreateInjuryRequest, Injury>()
             .ForMember(dest => dest.Category,
-                opt => opt.MapFrom(src => MapCategoryFromString(src.Category)));
+                opt => opt.MapFrom(src => MapCategoryFromString(src.Category)))
+            .ForMember(dest => dest.Id, opt => opt.Ignore())
+            .ForMember(dest => dest.CreatedAt, opt => opt.Ignore())
+            .ForMember(dest => dest.UpdatedAt, opt => opt.Ignore())
+            .ForMember(dest => dest.Files, opt => opt.Ignore());
 
         // UpdateInjuryRequest -> Injury
-        // Категорию не маппим автоматически – установим вручную в сервисе
         CreateMap<UpdateInjuryRequest, Injury>()
-            .ForMember(dest => dest.Category, opt => opt.Ignore())
+            .ForMember(dest => dest.Category, opt => opt.Ignore()) // обновляется вручную в сервисе
+            .ForMember(dest => dest.Date, opt => opt.Ignore())     // дата не обновляется через этот DTO
+            .ForMember(dest => dest.Id, opt => opt.Ignore())
+            .ForMember(dest => dest.CreatedAt, opt => opt.Ignore())
+            .ForMember(dest => dest.UpdatedAt, opt => opt.Ignore())
+            .ForMember(dest => dest.Files, opt => opt.Ignore())
             .ForAllMembers(opts => opts.Condition((src, dest, srcMember) => srcMember != null));
 
-        // Маппинг для файлов
+        // InjuryFile -> InjuryFileDto
         CreateMap<InjuryFile, InjuryFileDto>()
-            .ForMember(dest => dest.CreatedAt,
-                opt => opt.MapFrom(src => src.CreatedAt));
+            .ForMember(dest => dest.CreatedAt, opt => opt.MapFrom(src => src.CreatedAt));
     }
 
     /// <summary>

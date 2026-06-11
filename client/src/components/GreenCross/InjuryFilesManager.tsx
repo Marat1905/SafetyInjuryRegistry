@@ -1,4 +1,9 @@
-// InjuryFilesManager.tsx
+/**
+ * Компонент для управления файлами, прикреплёнными к травме.
+ * Позволяет просматривать, скачивать, удалять существующие файлы,
+ * а также загружать новые через drag-and-drop или выбор файла.
+ * Поддерживает очередь загрузки с прогрессом.
+ */
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
     FiDownload,
@@ -14,8 +19,14 @@ import {
     FiPaperclip,
 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
-import { safetyService } from '../services/api';
-import type { InjuryFileDto } from '../types';
+import { safetyService } from '../../services/api';
+import type { InjuryFileDto } from '../../types';
+
+// ----------------------------------------------------------------------
+// Константы валидации (должны совпадать с бэкендом UploadFileFormValidator)
+// ----------------------------------------------------------------------
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
+const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'application/pdf'];
 
 // ----------------------------------------------------------------------
 // Вспомогательные функции
@@ -96,16 +107,14 @@ const InjuryFilesManager: React.FC<InjuryFilesManagerProps> = ({ injuryId, isEdi
     }, [loadFiles]);
 
     // ------------------------------------------------------------------
-    // Валидация файла
+    // Валидация файла (синхронизирована с бэкендом)
     // ------------------------------------------------------------------
     const validateFile = (file: File): { valid: boolean; error?: string } => {
-        const maxSize = 10 * 1024 * 1024;
-        if (file.size > maxSize) {
-            return { valid: false, error: 'Размер не должен превышать 10 МБ' };
+        if (file.size > MAX_FILE_SIZE) {
+            return { valid: false, error: `Размер файла "${file.name}" превышает 10 МБ` };
         }
-        const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'application/pdf'];
-        if (!allowedTypes.includes(file.type)) {
-            return { valid: false, error: 'Разрешены только JPEG, PNG, PDF' };
+        if (!ALLOWED_MIME_TYPES.includes(file.type.toLowerCase())) {
+            return { valid: false, error: `Тип файла "${file.name}" не поддерживается. Разрешены: JPEG, PNG, PDF` };
         }
         return { valid: true };
     };
@@ -118,7 +127,7 @@ const InjuryFilesManager: React.FC<InjuryFilesManagerProps> = ({ injuryId, isEdi
         for (const file of Array.from(selectedFiles)) {
             const { valid, error } = validateFile(file);
             if (!valid) {
-                toast.error(`${file.name}: ${error}`);
+                toast.error(error);
                 continue;
             }
             newFiles.push({

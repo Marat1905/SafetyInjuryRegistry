@@ -1,7 +1,12 @@
+/**
+ * Главный компонент приложения.
+ * Управляет темой оформления (светлая/тёмная) и отображает глобальные уведомления.
+ * Содержит кнопку переключения темы и основной компонент GreenCross.
+ */
 import { useState, useEffect } from 'react';
 import { Toaster } from 'react-hot-toast';
 import { FiSun, FiMoon } from 'react-icons/fi';
-import GreenCross from './pages/GreenCross';
+import { GreenCross } from './components/GreenCross';
 import './index.css';
 
 function App() {
