@@ -5,20 +5,15 @@
  * Также загружает и показывает название организации под заголовком.
  */
 import React, { useState, useCallback, useEffect } from 'react';
-import { format, startOfMonth } from 'date-fns';
+import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { FiGrid, FiCalendar as FiYearIcon, FiChevronLeft, FiChevronRight, FiMapPin } from 'react-icons/fi';
-import { Toaster } from 'react-hot-toast';
-import { useInjuryData } from '../../hooks/useInjuryData';
-import { useNavigation } from '../../hooks/useNavigation';
-import { useStatistics } from '../../hooks/useStatistics';
-import CrossCalendar from './CrossCalendar';
-import YearCalendarView from './YearCalendarView';
-import StatsPanel from './StatsPanel';
-import LegendPanel from './LegendPanel';
-import InjuryModal from './InjuryModal';
-import type { InjuryDto } from '../../types';
-import { safetyService } from '../../services/api';
+import { useInjuryData } from '../../hooks/greenCross/useInjuryData';
+import { useNavigation } from '../../hooks/greenCross/useNavigation';
+import { useStatistics } from '../../hooks/greenCross/useStatistics';
+import {CrossCalendar, InjuryModal, LegendPanel, StatsPanel, YearCalendarView} from '../../components/GreenCross'
+import type { InjuryDto } from '../../types/greenCross';
+import { safetyService } from '../../services/greenCross/api';
 
 const GreenCross: React.FC = () => {
     // Роль: инженер по ТБ (для демонстрации – true, в реальности получается из контекста)

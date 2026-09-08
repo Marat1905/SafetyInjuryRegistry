@@ -35,11 +35,11 @@ import {
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import toast from 'react-hot-toast';
-import { safetyService } from '../services/api';
-import type { InjuryDto } from '../types/index';
+import { safetyService } from '../services/greenCross/api';
+import type { InjuryDto } from '../types/greenCross/index';
 import InjuryFilesManager from '../components/GreenCross/InjuryFilesManager';
 // Импорт схем валидации из отдельного файла
-import { createInjurySchema, updateInjurySchema, type CreateInjuryFormData, type UpdateInjuryFormData } from '../schemas/validationSchemas';
+import { createInjurySchema, updateInjurySchema, type CreateInjuryFormData, type UpdateInjuryFormData } from '../schemas/greenCross/validationSchemas';
 
 // ----------------------------------------------------------------------
 // Вспомогательные функции для работы с категориями

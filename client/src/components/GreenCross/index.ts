@@ -1,7 +1,6 @@
 /**
  * Экспорт всех компонентов модуля Green Cross для удобного импорта.
  */
-export { default as GreenCross } from './GreenCross';
 export { default as CrossCalendar } from './CrossCalendar';
 export { default as YearCalendarView } from './YearCalendarView';
 export { default as MonthView } from './MonthView';

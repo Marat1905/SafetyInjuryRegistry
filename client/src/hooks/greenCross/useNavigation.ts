@@ -4,7 +4,7 @@
  * а также функции goPrev/goNext, которые изменяют дату в зависимости от viewMode.
  */
 import { useState, useCallback } from 'react';
-import { startOfMonth, setMonth, setYear, getYear, getMonth } from 'date-fns';
+import { startOfMonth, setYear, getYear } from 'date-fns';
 
 export const useNavigation = (viewMode: 'cross' | 'year') => {
     // Для креста храним начало месяца, для года – любой день внутри года (используем 1 января)

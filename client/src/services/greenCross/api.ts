@@ -4,7 +4,7 @@
  * Добавляет токен авторизации и обрабатывает ошибки.
  */
 import axios from 'axios';
-import type { InjuryDto, CreateInjuryRequest, UpdateInjuryRequest, InjuryFileDto } from '../types/index';
+import type { InjuryDto, CreateInjuryRequest, UpdateInjuryRequest, InjuryFileDto } from '../../types/greenCross/index';
 
 const API_BASE_URL = '/api';
 

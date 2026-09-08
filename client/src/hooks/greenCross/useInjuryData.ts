@@ -5,9 +5,8 @@
  * Также обеспечивает фоновую синхронизацию каждые 10 минут.
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { startOfMonth } from 'date-fns';
-import { safetyService } from '../services/api';
-import type { InjuryDto } from '../types';
+import { safetyService } from '../../services/greenCross/api';
+import type { InjuryDto } from '../../types/greenCross';
 
 export const useInjuryData = (currentDate: Date) => {
     const [injuriesMonth, setInjuriesMonth] = useState<InjuryDto[]>([]);

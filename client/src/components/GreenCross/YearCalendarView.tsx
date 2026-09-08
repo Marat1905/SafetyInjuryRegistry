@@ -4,7 +4,7 @@
  */
 import React from 'react';
 import MonthView from './MonthView';
-import type { InjuryDto } from '../../types';
+import type { InjuryDto } from '../../types/greenCross';
 
 interface YearCalendarViewProps {
     year: number;

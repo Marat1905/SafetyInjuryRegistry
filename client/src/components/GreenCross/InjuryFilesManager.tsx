@@ -19,8 +19,8 @@ import {
     FiPaperclip,
 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
-import { safetyService } from '../../services/api';
-import type { InjuryFileDto } from '../../types';
+import { safetyService } from '../../services/greenCross/api';
+import type { InjuryFileDto } from '../../types/greenCross';
 
 // ----------------------------------------------------------------------
 // Константы валидации (должны совпадать с бэкендом UploadFileFormValidator)

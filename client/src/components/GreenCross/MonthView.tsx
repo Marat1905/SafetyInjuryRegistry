@@ -5,8 +5,8 @@
 import React from 'react';
 import { format, getDaysInMonth, getDay, isFuture, isSameDay, getYear, getMonth } from 'date-fns';
 import { ru } from 'date-fns/locale';
-import { getCategoryColorClass } from '../../utils/injuryHelpers';
-import type { InjuryDto } from '../../types';
+import { getCategoryColorClass } from '../../utils/greenCross/injuryHelpers';
+import type { InjuryDto } from '../../types/greenCross';
 
 interface MonthViewProps {
     year: number;

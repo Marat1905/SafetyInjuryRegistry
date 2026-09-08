@@ -5,8 +5,8 @@
  */
 import React, { useMemo } from 'react';
 import { getDaysInMonth, setDate, isFuture, isToday } from 'date-fns';
-import { getCategoryColorClass } from '../../utils/injuryHelpers';
-import type { InjuryDto } from '../../types';
+import { getCategoryColorClass } from '../../utils/greenCross/injuryHelpers';
+import type { InjuryDto } from '../../types/greenCross';
 
 interface CrossCalendarProps {
     currentDate: Date;

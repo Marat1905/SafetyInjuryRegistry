@@ -3,7 +3,7 @@
  * Обновляется при изменении года/месяца или по требованию.
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { safetyService } from '../services/api';
+import { safetyService } from '../../services/greenCross/api';
 
 interface StatisticsData {
     monthSignificantCount: number;

@@ -6,7 +6,7 @@
 import { useState, useEffect } from 'react';
 import { Toaster } from 'react-hot-toast';
 import { FiSun, FiMoon } from 'react-icons/fi';
-import { GreenCross } from './components/GreenCross';
+import  GreenCross  from './pages/greenCross/GreenCrossPage';
 import './index.css';
 
 function App() {
