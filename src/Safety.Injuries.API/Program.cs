@@ -1,4 +1,5 @@
 using Asp.Versioning;
+using AspNetCoreRateLimit;
 using FluentValidation;
 using FluentValidation.AspNetCore;
 using Microsoft.AspNetCore.Authorization;
@@ -11,17 +12,35 @@ using Safety.Injuries.Application;
 using Safety.Injuries.Application.Validators;
 using Safety.Injuries.Infrastructure;
 using Safety.Injuries.Infrastructure.Data;
+using Serilog;
 using Swashbuckle.AspNetCore.SwaggerGen;
+using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// 1. НАСТРОЙКА SERILOG (Исправленный и безопасный паттерн)
+builder.Host.UseSerilog((context, configuration) =>
+{
+    configuration.ReadFrom.Configuration(context.Configuration)
+        .Enrich.FromLogContext()
+        .Enrich.WithMachineName()
+        .Enrich.WithThreadId();
+});
+
+// 2. РЕГИСТРАЦИЯ FLUENT VALIDATION
+// Автоматически находит все классы, наследующие AbstractValidator, в указанной сборке
+builder.Services.AddFluentValidationAutoValidation();
+builder.Services.AddValidatorsFromAssemblyContaining<CreateInjuryRequestValidator>();
+
 // Add services to the container.
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        // Сериализуем все enum как строки
+        options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+    });
 
-// Add services to the container
-builder.Services.AddControllers();
-builder.Services.AddEndpointsApiExplorer();
-
-// НАСТРОЙКА ВЕРСИОНИРОВАНИЯ API
+// 3. НАСТРОЙКА ВЕРСИОНИРОВАНИЯ API
 builder.Services.AddApiVersioning(options =>
 {
     options.DefaultApiVersion = new ApiVersion(1, 0);
@@ -36,6 +55,8 @@ builder.Services.AddApiVersioning(options =>
     options.SubstituteApiVersionInUrl = true;
 });
 
+// 4. НАСТРОЙКА SWAGGER
+builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new OpenApiInfo { Title = "Safety Injuries API", Version = "v1" });
@@ -43,13 +64,41 @@ builder.Services.AddSwaggerGen(c =>
     c.DocumentFilter<ReplaceVersionWithExactValueInPathFilter>();
 });
 
-//builder.Services.AddSwaggerGen(opt =>
-//{
-//    var xmlFileName = $"{Assembly.GetExecutingAssembly().GetName().Name}.xml";
-//    opt.IncludeXmlComments(Path.Combine(AppContext.BaseDirectory, xmlFileName), includeControllerXmlComments: true);
-//    opt.SupportNonNullableReferenceTypes();
-//});
-// Add layers
+// 5. НАСТРОЙКА CORS
+// Читаем настройки CORS из конфигурации
+var corsSettings = builder.Configuration.GetSection("CorsSettings").Get<CorsSettings>()
+    ?? new CorsSettings();
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowSpecificOrigins", policy =>
+    {
+        // Если в режиме разработки и список разрешённых источников не задан — разрешаем любые
+        if (builder.Environment.IsDevelopment() && corsSettings.AllowedOrigins == null)
+        {
+            policy.AllowAnyOrigin()
+                  .AllowAnyMethod()
+                  .AllowAnyHeader();
+        }
+        else
+        {
+            // В продакшене используем строго определённые источники, методы и заголовки
+            policy.WithOrigins(corsSettings.AllowedOrigins ?? Array.Empty<string>())
+                  .WithMethods(corsSettings.AllowedMethods ?? new[] { "GET", "POST", "PUT", "DELETE", "OPTIONS" })
+                  .WithHeaders(corsSettings.AllowedHeaders ?? new[] { "Content-Type", "Authorization", "X-Requested-With" })
+                  .SetPreflightMaxAge(TimeSpan.FromMinutes(corsSettings.PreflightMaxAgeMinutes ?? 10));
+        }
+    });
+});
+
+// ========== НАСТРОЙКА RATE LIMITING ==========
+builder.Services.AddMemoryCache();
+builder.Services.Configure<IpRateLimitOptions>(builder.Configuration.GetSection("IpRateLimiting"));
+builder.Services.AddSingleton<IIpPolicyStore, MemoryCacheIpPolicyStore>();
+builder.Services.AddSingleton<IRateLimitCounterStore, MemoryCacheRateLimitCounterStore>();
+builder.Services.AddSingleton<IRateLimitConfiguration, RateLimitConfiguration>();
+builder.Services.AddSingleton<IProcessingStrategy, AsyncKeyLockProcessingStrategy>();
+
+// ========== РЕГИСТРАЦИЯ СЛОЁВ И СПЕЦИФИЧНЫХ СЕРВИСОВ ==========
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddSingleton<IOrganizationNameDecryptor, OrganizationNameDecryptor>();
@@ -60,28 +109,30 @@ builder.Services.AddSignalR(options =>
     options.EnableDetailedErrors = true;
     options.KeepAliveInterval = TimeSpan.FromSeconds(15);
 });
-// FluentValidation
-builder.Services.AddFluentValidationAutoValidation();
-builder.Services.AddValidatorsFromAssemblyContaining<CreateInjuryRequestValidator>();
 
-// Logging
-builder.Services.AddLogging();
-builder.Services.AddHealthChecks();
+// Health Checks with database connectivity check
+builder.Services.AddHealthChecks()
+    .AddNpgSql(
+        builder.Configuration.GetConnectionString("DefaultConnection"),
+        name: "PostgreSQL",
+        failureStatus: Microsoft.Extensions.Diagnostics.HealthChecks.HealthStatus.Unhealthy,
+        tags: new[] { "db", "postgresql" });
+
 builder.Services.AddCustomJWTAuthentification();
-
-//builder.Services.AddCors(options =>
-//{
-//    options.AddPolicy("AllowGatewayOnly", policy =>
-//    {
-//        policy.WithOrigins("http://localhost:5002") // Only Gateway
-//              .AllowAnyMethod()
-//              .AllowAnyHeader();
-//    });
-//});
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline
+// ========== MIDDLEWARE PIPELINE ==========
+
+// ========== ДОБАВЛЯЕМ ПРОМЕЖУТОЧНОЕ ПО RATE LIMITING ==========
+// Должно быть добавлено до других middleware, но после использования CORS.
+app.UseIpRateLimiting();
+
+app.UseCors("AllowSpecificOrigins");
+
+app.UseMiddleware<ExceptionMiddleware>();
+
+// Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -92,16 +143,36 @@ if (app.Environment.IsDevelopment())
     });
 }
 
-app.UseMiddleware<ExceptionMiddleware>();
-
-//app.UseCors("AllowGatewayOnly");
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 
+// Карта health checks
+app.MapHealthChecks("/health", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
+{
+    ResponseWriter = async (context, report) =>
+    {
+        context.Response.ContentType = "application/json";
+        var response = new
+        {
+            status = report.Status.ToString(),
+            checks = report.Entries.Select(e => new
+            {
+                name = e.Key,
+                status = e.Value.Status.ToString(),
+                description = e.Value.Description,
+                duration = e.Value.Duration.TotalMilliseconds
+            }),
+            totalDuration = report.TotalDuration.TotalMilliseconds
+        };
+        await context.Response.WriteAsJsonAsync(response);
+    }
+});
+
+// ========== ИНИЦИАЛИЗАЦИЯ И ЗАПУСК (ИСПРАВЛЕНО) ==========
 try
 {
-    //Initialize database
+    // 1. Инициализируем базу данных
     using (var scope = app.Services.CreateScope())
     {
         var context = scope.ServiceProvider.GetRequiredService<SafetyInjuriesDbContext>();
@@ -109,7 +180,6 @@ try
         if (app.Environment.IsDevelopment())
         {
             // Только для разработки - пересоздание БД
-            //await context.Database.EnsureCreated();
             context.Database.EnsureCreated();
         }
         else
@@ -118,14 +188,25 @@ try
             context.Database.Migrate();
         }
     }
+
+    // 2. Логируем успешный запуск (теперь этот лог ГАРАНТИРОВАННО запишется)
+    app.Logger.LogInformation("=== ПРИЛОЖЕНИЕ УСПЕШНО ЗАПУЩЕНО И ГОТОВО К РАБОТЕ ===");
+
+    // 3. Запускаем веб-сервер (блокирует выполнение до остановки приложения)
+    await app.RunAsync();
 }
 catch (Exception ex)
 {
-    // Логируем ошибку, но даем приложению (и сборщику миграций) жить дальше
-    Console.WriteLine($"Database initialization failed: {ex.Message}");
+    // Логируем фатальную ошибку, если приложение не смогло запуститься
+    Log.Fatal(ex, "Application startup or database initialization failed");
+}
+finally
+{
+    // 4. Закрываем логгер ТОЛЬКО при реальном завершении работы приложения (например, по Ctrl+C)
+    Log.CloseAndFlush();
 }
 
-app.Run();
+// ========== ВСПОМОГАТЕЛЬНЫЕ КЛАССЫ ==========
 
 /// <summary>
 /// Фильтр для Swagger, который заменяет {version} в пути на актуальное значение версии.
@@ -143,4 +224,30 @@ public class ReplaceVersionWithExactValueInPathFilter : IDocumentFilter
         }
         swaggerDoc.Paths = paths;
     }
+}
+
+/// <summary>
+/// Настройки CORS, читаемые из appsettings.json.
+/// </summary>
+public class CorsSettings
+{
+    /// <summary>
+    /// Массив разрешённых источников (например, https://myfrontend.com).
+    /// </summary>
+    public string[]? AllowedOrigins { get; set; }
+
+    /// <summary>
+    /// Массив разрешённых HTTP-методов (если не указан, используются GET, POST, PUT, DELETE, OPTIONS).
+    /// </summary>
+    public string[]? AllowedMethods { get; set; }
+
+    /// <summary>
+    /// Массив разрешённых заголовков (если не указан, используются Content-Type, Authorization, X-Requested-With).
+    /// </summary>
+    public string[]? AllowedHeaders { get; set; }
+
+    /// <summary>
+    /// Время кеширования предварительного запроса (preflight) в минутах.
+    /// </summary>
+    public int? PreflightMaxAgeMinutes { get; set; }
 }
