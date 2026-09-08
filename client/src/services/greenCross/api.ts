@@ -6,7 +6,7 @@
 import axios from 'axios';
 import type { InjuryDto, CreateInjuryRequest, UpdateInjuryRequest, InjuryFileDto } from '../../types/greenCross/index';
 
-const API_BASE_URL = '/api';
+const API_BASE_URL = '/safety/api/v1';
 
 // Создаём экземпляр axios с базовым URL и общими заголовками
 const apiClient = axios.create({
@@ -87,7 +87,7 @@ export const safetyService = {
      * @param month - месяц (1–12)
      */
     async getByMonth(year: number, month: number): Promise<InjuryDto[]> {
-        const response = await apiClient.get<InjuryDto[]>('/safety/injuries', {
+        const response = await apiClient.get<InjuryDto[]>('/injuries', {
             params: { year, month }
         });
         return response.data;
@@ -98,7 +98,7 @@ export const safetyService = {
      * @param year - год
      */
     async getByYear(year: number): Promise<InjuryDto[]> {
-        const response = await apiClient.get<InjuryDto[]>(`/safety/injuries/year/${year}`);
+        const response = await apiClient.get<InjuryDto[]>(`/injuries/year/${year}`);
         return response.data;
     },
 
@@ -107,7 +107,7 @@ export const safetyService = {
      */
     async getLatest(): Promise<InjuryDto | null> {
         try {
-            const response = await apiClient.get<InjuryDto>('/safety/injuries/latest');
+            const response = await apiClient.get<InjuryDto>('/injuries/latest');
             return response.data;
         } catch {
             return null; // если 404 или ошибка – возвращаем null
@@ -120,7 +120,7 @@ export const safetyService = {
      */
     async getLatestSignificant(): Promise<InjuryDto | null> {
         try {
-            const response = await apiClient.get<InjuryDto>('/safety/injuries/latest/significant');
+            const response = await apiClient.get<InjuryDto>('/injuries/latest/significant');
             return response.data;
         } catch {
             return null; // если 404 или ошибка – возвращаем null
@@ -132,7 +132,7 @@ export const safetyService = {
      * @param data - данные для создания
      */
     async create(data: CreateInjuryRequest): Promise<InjuryDto> {
-        const response = await apiClient.post<InjuryDto>('/safety/injuries', data);
+        const response = await apiClient.post<InjuryDto>('/injuries', data);
         return response.data;
     },
 
@@ -142,7 +142,7 @@ export const safetyService = {
      * @param data - новые данные
      */
     async update(id: string, data: UpdateInjuryRequest): Promise<InjuryDto> {
-        const response = await apiClient.put<InjuryDto>(`/safety/injuries/${id}`, data);
+        const response = await apiClient.put<InjuryDto>(`/injuries/${id}`, data);
         return response.data;
     },
 
@@ -151,7 +151,7 @@ export const safetyService = {
      * @param id - идентификатор травмы
      */
     async delete(id: string): Promise<void> {
-        await apiClient.delete(`/safety/injuries/${id}`);
+        await apiClient.delete(`/injuries/${id}`);
     },
 
     // ========== Методы для работы с файлами травм ==========
@@ -161,7 +161,7 @@ export const safetyService = {
      * @param injuryId - идентификатор травмы
      */
     async getFiles(injuryId: string): Promise<InjuryFileDto[]> {
-        const response = await apiClient.get<InjuryFileDto[]>(`/safety/injuries/${injuryId}/files`);
+        const response = await apiClient.get<InjuryFileDto[]>(`/injuries/${injuryId}/files`);
         return response.data;
     },
 
@@ -178,7 +178,7 @@ export const safetyService = {
             formData.append('description', description);
         }
 
-        const response = await apiClient.post<InjuryFileDto>(`/safety/injuries/${injuryId}/files`, formData, {
+        const response = await apiClient.post<InjuryFileDto>(`/injuries/${injuryId}/files`, formData, {
             headers: {
                 'Content-Type': 'multipart/form-data',
             },
@@ -193,7 +193,7 @@ export const safetyService = {
      * @returns Promise<Blob> - содержимое файла
      */
     async downloadFile(injuryId: string, fileId: string): Promise<Blob> {
-        const response = await apiClient.get(`/safety/injuries/${injuryId}/files/${fileId}`, {
+        const response = await apiClient.get(`/injuries/${injuryId}/files/${fileId}`, {
             responseType: 'blob',
         });
         return response.data;
@@ -205,21 +205,21 @@ export const safetyService = {
      * @param fileId - идентификатор файла
      */
     async deleteFile(injuryId: string, fileId: string): Promise<void> {
-        await apiClient.delete(`/safety/injuries/${injuryId}/files/${fileId}`);
+        await apiClient.delete(`/injuries/${injuryId}/files/${fileId}`);
     },
 
     /**
- * Получить статистику по значимым травмам (П1/П2) за указанные месяц и год
- * @param year - год
- * @param month - месяц (1-12)
- */
+     * Получить статистику по значимым травмам (П1/П2) за указанные месяц и год
+     * @param year - год
+     * @param month - месяц (1-12)
+     */
     async getStatistics(year: number, month: number): Promise<{
         monthSignificantCount: number;
         yearSignificantCount: number;
         lastSignificantDate: string | null;
         daysWithoutInjury: number;
     }> {
-        const response = await apiClient.get('/safety/injuries/statistics', {
+        const response = await apiClient.get('/injuries/statistics', {
             params: { year, month }
         });
         return response.data;
@@ -239,6 +239,23 @@ export const safetyService = {
             console.error('Ошибка при получении названия организации:', error);
             return '';
         }
+    },
+
+    // ========== Метод для получения версии API ==========
+
+    /**
+     * Получить информацию о версии запущенного приложения
+     * @returns объект с версией, окружением, датой сборки и хэшем коммита
+     */
+    async getVersion(): Promise<{
+        applicationName: string;
+        version: string;
+        environment: string;
+        gitCommit: string;
+        buildDate: string;
+    }> {
+        const response = await apiClient.get('/version');
+        return response.data;
     }
 };
 

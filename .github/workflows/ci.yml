@@ -3,13 +3,13 @@ name: Build, Test and Push Docker Images
 on:
   push:
     branches: [ master, develop ]
+    tags: [ 'v*' ]                 # добавлен триггер на теги
   pull_request:
     branches: [ master, develop ]
   workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
-  # Не используем OWNER напрямую – сделаем преобразование в шаге
 
 jobs:
   # 1. Тестирование кода
@@ -23,12 +23,24 @@ jobs:
           
       - run: dotnet restore SafetyInjuryRegistry.sln
       - run: dotnet build SafetyInjuryRegistry.sln --no-restore -c Release
-      - run: dotnet test SafetyInjuryRegistry.sln --no-build -c Release
+      
+      # Запускаем тесты с генерацией TRX-отчетов для красивого отображения в GitHub UI
+      - run: dotnet test SafetyInjuryRegistry.sln --no-build -c Release --logger "trx;LogFileName=test-results.trx" || true
+      
+      # Публикация результатов тестов в удобном виде (работает даже если тесты упали)
+      - name: Test Report
+        uses: dorny/test-reporter@v1
+        if: success() || failure()    # запускаем всегда, чтобы видеть какие тесты упали
+        with:
+          name: SafetyInjuryRegistry Tests
+          path: '**/test-results.trx'
+          reporter: dotnet-trx
 
-  # 2. Проверка Kubernetes манифестов (только для PR)
+  # 2. Проверка Kubernetes манифестов
   lint-k8s:
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
+    # Запускаем на PR и на push в master/develop для защиты от прямого пуша битых манифестов
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/develop'))
     steps:
       - uses: actions/checkout@v4
       - name: Install kubeconform
@@ -38,14 +50,14 @@ jobs:
           sudo mv kubeconform /usr/local/bin/
       - name: Validate Kubernetes manifests
         run: |
-          # Замените 'k8s/' на путь к вашей папке с манифестами, если она другая
+         # Замените 'k8s/' на путь к вашей папке с манифестами, если она другая
           kubeconform -strict -summary -kubernetes-version 1.29.0 k8s/ || echo "⚠️ Манифесты не найдены или есть ошибки"
 
   # 3. Сборка и публикация образа (только при push)
   build-and-push:
     runs-on: ubuntu-latest
     needs: test
-    if: github.event_name == 'push'
+    if: github.event_name == 'push'   # теперь срабатывает и на push тегов, и на push веток
     permissions:
       contents: read
       packages: write
@@ -53,12 +65,36 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        # Для получения всех тегов (если нужно использовать git describe) можно добавить:
+        # with:
+        #   fetch-depth: 0
 
       # Преобразуем OWNER в нижний регистр и сохраняем в переменную окружения
+      # GHCR требует, чтобы имя владельца было в lower case
       - name: Set lowercase owner
         run: |
           OWNER_LC="${{ github.repository_owner }}"
           echo "OWNER_LC=${OWNER_LC,,}" >> $GITHUB_ENV
+
+      # Автоматическая генерация тегов и метаданных для Docker образа
+      # Это заменяет ручное извлечение версии из тега и гарантирует, что:
+      # - тег 'latest' будет применяться ТОЛЬКО для master и релизных тегов
+      # - для develop будут свои теги (develop, sha), не перезаписывающие stable
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.OWNER_LC }}/safetyinjuryregistry-api
+          tags: |
+            # Тег с именем ветки (master, develop)
+            type=ref,event=branch
+            # Тег версии из git-тега (v1.2.3 -> 1.2.3)
+            type=semver,pattern={{version}}
+            # Тег с SHA коммита для точной идентификации
+            type=sha
+            # Тег latest ТОЛЬКО для default-ветки (master) и релизных тегов
+            # Это защищает продакшен от перезаписи нестабильной версией из develop
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v') }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -72,18 +108,21 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # 1. API
+      # API
       - name: Build and push SafetyInjuryRegistry API
         uses: docker/build-push-action@v6
         with:
           context: .
           file: src/Safety.Injuries.API/Dockerfile
           push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.OWNER_LC }}/safetyinjuryregistry-api:latest
-            ${{ env.REGISTRY }}/${{ env.OWNER_LC }}/safetyinjuryregistry-api:${{ github.sha }}
+          # Используем автоматически сгенерированные теги из metadata-action
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          build-args: |
+            GIT_COMMIT=${{ github.sha }}
+            APP_VERSION=${{ steps.meta.outputs.version }}
 
       # 2. Client (если нужен, сейчас Dockerfile отсутствует)
       # - name: Build and push SafetyInjuryRegistry Client
