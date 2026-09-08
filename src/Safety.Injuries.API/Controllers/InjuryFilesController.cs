@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Authorization;
+﻿using Asp.Versioning;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Safety.Injuries.Application.DTOs;
 using Safety.Injuries.Application.Interfaces;
@@ -8,7 +9,8 @@ namespace Safety.Injuries.API.Controllers;
 /// <summary>
 /// Контроллер для управления файлами, прикрепленными к травмам
 /// </summary>
-[Route("api/safety/injuries/{injuryId}/files")]
+[ApiVersion("1.0")]
+[Route("safety/api/v{version:apiVersion}/injuries/{injuryId}/files")]
 [ApiController]
 //[Authorize] // При необходимости раскомментировать
 public class InjuryFilesController : ControllerBase

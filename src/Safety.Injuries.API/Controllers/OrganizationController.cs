@@ -1,9 +1,11 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Asp.Versioning;
+using Microsoft.AspNetCore.Mvc;
 using Safety.Injuries.API.Services;
 
 namespace Safety.Injuries.API.Controllers;
 
-[Route("api/[controller]")]
+[ApiVersion("1.0")]
+[Route("safety/api/v{version:apiVersion}/[controller]")]
 [ApiController]
 public class OrganizationController : ControllerBase
 {
