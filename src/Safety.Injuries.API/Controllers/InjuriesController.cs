@@ -86,7 +86,7 @@ public class InjuriesController : ControllerBase
     /// <param name="request">Данные для создания травмы</param>
     /// <returns>Созданная травма с HTTP-статусом 201 (Created)</returns>
     [HttpPost]
-    //[Authorize(Policy = "SafetyPolicy")]
+    [Authorize(Policy = "SafetyPolicy")]
     [ProducesResponseType(typeof(InjuryDto), 201)]
     [ProducesResponseType(400)]
     public async Task<IActionResult> Create([FromBody] CreateInjuryRequest request)
@@ -105,7 +105,7 @@ public class InjuriesController : ControllerBase
     /// <param name="request">Данные для обновления (все поля опциональны)</param>
     /// <returns>Обновлённая травма</returns>
     [HttpPut("{id}")]
-    //[Authorize(Policy = "SafetyPolicy")]
+    [Authorize(Policy = "SafetyPolicy")]
     [ProducesResponseType(typeof(InjuryDto), 200)]
     [ProducesResponseType(404)]
     [ProducesResponseType(400)]
@@ -131,7 +131,7 @@ public class InjuriesController : ControllerBase
     /// <param name="id">Идентификатор травмы</param>
     /// <returns>HTTP 204 No Content при успешном удалении</returns>
     [HttpDelete("{id}")]
-    //[Authorize(Policy = "SafetyPolicy")]
+    [Authorize(Policy = "SafetyPolicy")]
     [ProducesResponseType(204)]
     [ProducesResponseType(404)]
     public async Task<IActionResult> Delete(Guid id)

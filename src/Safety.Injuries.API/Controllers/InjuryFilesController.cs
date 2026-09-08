@@ -50,7 +50,7 @@ public class InjuryFilesController : ControllerBase
     /// <param name="injuryId">Идентификатор травмы</param>
     /// <param name="uploadForm">Данные загружаемого файла (описание и сам файл)</param>
     [HttpPost]
-    //[Authorize(Policy = "SafetyPolicy")]
+    [Authorize(Policy = "SafetyPolicy")]
     [ProducesResponseType(typeof(InjuryFileDto), 201)]
     [ProducesResponseType(400)]
     [ProducesResponseType(404)]
@@ -110,7 +110,7 @@ public class InjuryFilesController : ControllerBase
     /// <param name="injuryId">Идентификатор травмы</param>
     /// <param name="fileId">Идентификатор файла</param>
     [HttpDelete("{fileId}")]
-    //[Authorize(Policy = "SafetyPolicy")]
+    [Authorize(Policy = "SafetyPolicy")]
     [ProducesResponseType(204)]
     [ProducesResponseType(404)]
     public async Task<IActionResult> DeleteFile(Guid injuryId, Guid fileId)
