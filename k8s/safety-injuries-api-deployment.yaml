@@ -1,15 +1,16 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
+  name: safety-injuries-api
   labels:
     io.kompose.service: safety-injuries-api
-  name: safety-injuries-api
   annotations:
-    # Включаем автоматическое обновление
-    keel.sh/policy: force
-    # Keel будет проверять реестр ghcr.io каждые 10 минут
+    # ИСПРАВЛЕНО: Вместо "semver" указываем "minor" (или "patch")
+    keel.sh/policy: minor
+    # Включаем опрос реестра
     keel.sh/trigger: poll
-    keel.sh/pollSchedule: "@every 10m"
+    # Интервал опроса (каждые 20 минут)
+    keel.sh/pollSchedule: "@every 20m"
 spec:
   replicas: 1
   selector:
@@ -23,18 +24,19 @@ spec:
       imagePullSecrets:
         - name: ghcr-secret
       containers:
-        - env:
-            - name: ASPNETCORE_ENVIRONMENT
-              value: Production
-            - name: ASPNETCORE_HTTP_PORTS
-              value: "8080"
-            - name: ConnectionStrings__DefaultConnection
-              value: Host=safety-injuries-db;Port=5432;Database=safetyinjuries;Username=safetyuser;Password=12345678
-          image: ghcr.io/marat1905/safetyinjuryregistry-api:latest
-          name: safety-injuries-api
+        - name: safety-injuries-api
+          image: ghcr.io/marat1905/safetyinjuryregistry-api:1.2.0
+          imagePullPolicy: Always
           ports:
             - containerPort: 8081
               protocol: TCP
             - containerPort: 8080
               protocol: TCP
+          env:
+            - name: ASPNETCORE_ENVIRONMENT
+              value: "Production"
+            - name: ASPNETCORE_HTTP_PORTS
+              value: "8080"
+            - name: ConnectionStrings__DefaultConnection
+              value: "Host=safety-injuries-db;Port=5432;Database=safetyinjuries;Username=safetyuser;Password=12345678"
       restartPolicy: Always
