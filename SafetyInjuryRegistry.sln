@@ -23,6 +23,15 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Safety.Injuries.UnitTests",
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Safety.Injuries.IntegrationTests", "tests\Safety.Injuries.IntegrationTests\Safety.Injuries.IntegrationTests.csproj", "{1DBF9C4E-D8C9-4510-908C-5C62BFB92FD7}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "k8s", "k8s", "{BA43CA56-00BF-4310-9191-6E6AB5C81248}"
+	ProjectSection(SolutionItems) = preProject
+		k8s\safety-injuries-api-deployment.yaml = k8s\safety-injuries-api-deployment.yaml
+		k8s\safety-injuries-api-service.yaml = k8s\safety-injuries-api-service.yaml
+		k8s\safety-injuries-db-data-persistentvolumeclaim.yaml = k8s\safety-injuries-db-data-persistentvolumeclaim.yaml
+		k8s\safety-injuries-db-deployment.yaml = k8s\safety-injuries-db-deployment.yaml
+		k8s\safety-injuries-db-service.yaml = k8s\safety-injuries-db-service.yaml
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
