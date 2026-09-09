@@ -9,3 +9,4 @@ export { default as LegendPanel } from './LegendPanel';
 export { default as InjuryModal } from './InjuryModal';
 export { default as CreateEditInjuryForm } from './CreateEditInjuryForm';
 export { default as PendingFilesManager } from './PendingFilesManager';
+export { default as InjuryFilesManager } from './InjuryFilesManager';
