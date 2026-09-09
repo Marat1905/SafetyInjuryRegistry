@@ -16,6 +16,11 @@ import { safetyService } from '../../services/greenCross/api';
 const GreenCross: React.FC = () => {
     // Роль: инженер по ТБ (для демонстрации – true, в реальности получается из контекста)
     const isSafetyEngineer = true;
+    //const { user } = useAuth();
+    //const isSafetyEngineer = useMemo(
+    //    () => user?.roles?.includes('Safety') || user?.roles?.includes('Admin') || false,
+    //    [user]
+    //);
 
     // Состояние для названия организации
     const [organizationName, setOrganizationName] = useState<string>('');
