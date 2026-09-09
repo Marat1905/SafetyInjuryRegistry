@@ -4,6 +4,7 @@
  * Добавляет токен авторизации и обрабатывает ошибки.
  */
 import axios from 'axios';
+import toast from 'react-hot-toast';
 import type { InjuryDto, CreateInjuryRequest, UpdateInjuryRequest, InjuryFileDto } from '../../types/greenCross/index';
 
 const API_BASE_URL = '/safety/api/v1';
@@ -50,16 +51,26 @@ const responseInterceptor = (response: any) => {
 
 /**
  * Response error interceptor: обрабатывает ошибки (401, 403, 500 и т.д.)
+ * При 401 показывает тост и перенаправляет на страницу входа.
  */
 const responseErrorInterceptor = (error: any) => {
     if (error.response) {
         const { status, data } = error.response;
         if (status === 401) {
-            // Неавторизован – очищаем токен и перенаправляем на страницу входа
+            // Показываем уведомление перед редиректом
+            toast.error('Сессия истекла. Пожалуйста, войдите заново.');
+            // Удаляем токен
             localStorage.removeItem('access_token');
-            window.location.href = '/login';
+            // Перенаправляем на страницу входа с небольшой задержкой,
+            // чтобы пользователь успел увидеть уведомление
+            setTimeout(() => {
+                window.location.href = '/login';
+            }, 1500); // 1.5 секунды
+            // Возвращаем отклонённый промис, чтобы остановить дальнейшую обработку
+            return Promise.reject(error);
         } else if (status === 403) {
-            console.error('Доступ запрещён', data);
+            // Для 403 тоже показываем тост, но не делаем редирект
+            toast.error('У вас нет прав для выполнения этого действия.');
         } else if (status === 404) {
             console.warn('Ресурс не найден', data);
         } else {
@@ -67,6 +78,7 @@ const responseErrorInterceptor = (error: any) => {
         }
     } else if (error.request) {
         console.error('Сервер не отвечает:', error.request);
+        toast.error('Сервер временно недоступен. Попробуйте позже.');
     } else {
         console.error('Ошибка при настройке запроса:', error.message);
     }
