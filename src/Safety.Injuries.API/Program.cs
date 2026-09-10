@@ -176,17 +176,17 @@ try
     using (var scope = app.Services.CreateScope())
     {
         var context = scope.ServiceProvider.GetRequiredService<SafetyInjuriesDbContext>();
-
-        if (app.Environment.IsDevelopment())
-        {
-            // Только для разработки - пересоздание БД
-            context.Database.EnsureCreated();
-        }
-        else
-        {
-            // Для production - применяем миграции
-            context.Database.Migrate();
-        }
+        context.Database.Migrate();
+        //if (app.Environment.IsDevelopment())
+        //{
+        //    // Только для разработки - пересоздание БД
+        //    context.Database.EnsureCreated();
+        //}
+        //else
+        //{
+        //    // Для production - применяем миграции
+        //    context.Database.Migrate();
+        //}
     }
 
     // 2. Логируем успешный запуск (теперь этот лог ГАРАНТИРОВАННО запишется)

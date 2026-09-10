@@ -25,7 +25,7 @@ spec:
         - name: ghcr-secret
       containers:
         - name: safety-injuries-api
-          image: ghcr.io/marat1905/safetyinjuryregistry-api:1.2.0
+          image: ghcr.io/marat1905/safetyinjuryregistry-api:1.2.2
           imagePullPolicy: Always
           ports:
             - containerPort: 8081
