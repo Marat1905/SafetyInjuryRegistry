@@ -1,11 +1,16 @@
-/**
- * API-клиент для взаимодействия с бэкендом.
- * Содержит все методы для работы с травмами, файлами и организацией.
- * Добавляет токен авторизации и обрабатывает ошибки.
- */
 import axios from 'axios';
-import toast from 'react-hot-toast';
-import type { InjuryDto, CreateInjuryRequest, UpdateInjuryRequest, InjuryFileDto } from '../../types/greenCross/index';
+import type {
+    InjuryDto,
+    CreateInjuryRequest,
+    UpdateInjuryRequest,
+    InjuryFileDto,
+} from '../../types/greenCross/index';
+import {
+    requestInterceptor,
+    requestErrorInterceptor,
+    responseInterceptor,
+    responseErrorInterceptor,
+} from '../axiosInterceptors';
 
 const API_BASE_URL = '/safety/api/v1';
 
@@ -17,75 +22,7 @@ const apiClient = axios.create({
     },
 });
 
-// ----------------------------------------------------------------------
-// Интерцепторы запросов
-// ----------------------------------------------------------------------
-
-/**
- * Request interceptor: добавляет токен авторизации из localStorage
- */
-const requestInterceptor = (config: any) => {
-    const token = localStorage.getItem('access_token');
-    if (token) {
-        config.headers = config.headers || {};
-        config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-};
-
-const requestErrorInterceptor = (error: any) => {
-    console.error('[API Request Error]', error);
-    return Promise.reject(error);
-};
-
-// ----------------------------------------------------------------------
-// Интерцепторы ответов
-// ----------------------------------------------------------------------
-
-/**
- * Response interceptor: обрабатывает успешные ответы
- */
-const responseInterceptor = (response: any) => {
-    return response;
-};
-
-/**
- * Response error interceptor: обрабатывает ошибки (401, 403, 500 и т.д.)
- * При 401 показывает тост и перенаправляет на страницу входа.
- */
-const responseErrorInterceptor = (error: any) => {
-    if (error.response) {
-        const { status, data } = error.response;
-        if (status === 401) {
-            // Показываем уведомление перед редиректом
-            toast.error('Сессия истекла. Пожалуйста, войдите заново.');
-            // Удаляем токен
-            localStorage.removeItem('access_token');
-            // Перенаправляем на страницу входа с небольшой задержкой,
-            // чтобы пользователь успел увидеть уведомление
-            setTimeout(() => {
-                window.location.href = '/login';
-            }, 1500); // 1.5 секунды
-            // Возвращаем отклонённый промис, чтобы остановить дальнейшую обработку
-            return Promise.reject(error);
-        } else if (status === 403) {
-            // Для 403 тоже показываем тост, но не делаем редирект
-            toast.error('У вас нет прав для выполнения этого действия.');
-        } else if (status === 404) {
-            console.warn('Ресурс не найден', data);
-        } else {
-            console.error(`Ошибка сервера (${status}):`, data);
-        }
-    } else if (error.request) {
-        console.error('Сервер не отвечает:', error.request);
-        toast.error('Сервер временно недоступен. Попробуйте позже.');
-    } else {
-        console.error('Ошибка при настройке запроса:', error.message);
-    }
-    return Promise.reject(error);
-};
-
-// Применяем интерцепторы
+// Применяем кастомные интерцепторы проекта
 apiClient.interceptors.request.use(requestInterceptor, requestErrorInterceptor);
 apiClient.interceptors.response.use(responseInterceptor, responseErrorInterceptor);
 
@@ -100,7 +37,7 @@ export const safetyService = {
      */
     async getByMonth(year: number, month: number): Promise<InjuryDto[]> {
         const response = await apiClient.get<InjuryDto[]>('/injuries', {
-            params: { year, month }
+            params: { year, month },
         });
         return response.data;
     },
@@ -122,7 +59,7 @@ export const safetyService = {
             const response = await apiClient.get<InjuryDto>('/injuries/latest');
             return response.data;
         } catch {
-            return null; // если 404 или ошибка – возвращаем null
+            return null;
         }
     },
 
@@ -135,7 +72,7 @@ export const safetyService = {
             const response = await apiClient.get<InjuryDto>('/injuries/latest/significant');
             return response.data;
         } catch {
-            return null; // если 404 или ошибка – возвращаем null
+            return null;
         }
     },
 
@@ -183,18 +120,28 @@ export const safetyService = {
      * @param file - файл для загрузки
      * @param description - описание файла (необязательно)
      */
-    async uploadFile(injuryId: string, file: File, description?: string): Promise<InjuryFileDto> {
+    async uploadFile(
+        injuryId: string,
+        file: File,
+        description?: string
+    ): Promise<InjuryFileDto> {
         const formData = new FormData();
         formData.append('file', file);
+
         if (description) {
             formData.append('description', description);
         }
 
-        const response = await apiClient.post<InjuryFileDto>(`/injuries/${injuryId}/files`, formData, {
-            headers: {
-                'Content-Type': 'multipart/form-data',
-            },
-        });
+        const response = await apiClient.post<InjuryFileDto>(
+            `/injuries/${injuryId}/files`,
+            formData,
+            {
+                headers: {
+                    'Content-Type': 'multipart/form-data',
+                },
+            }
+        );
+
         return response.data;
     },
 
@@ -205,9 +152,13 @@ export const safetyService = {
      * @returns Promise<Blob> - содержимое файла
      */
     async downloadFile(injuryId: string, fileId: string): Promise<Blob> {
-        const response = await apiClient.get(`/injuries/${injuryId}/files/${fileId}`, {
-            responseType: 'blob',
-        });
+        const response = await apiClient.get(
+            `/injuries/${injuryId}/files/${fileId}`,
+            {
+                responseType: 'blob',
+            }
+        );
+
         return response.data;
     },
 
@@ -225,15 +176,19 @@ export const safetyService = {
      * @param year - год
      * @param month - месяц (1-12)
      */
-    async getStatistics(year: number, month: number): Promise<{
+    async getStatistics(
+        year: number,
+        month: number
+    ): Promise<{
         monthSignificantCount: number;
         yearSignificantCount: number;
         lastSignificantDate: string | null;
         daysWithoutInjury: number;
     }> {
         const response = await apiClient.get('/injuries/statistics', {
-            params: { year, month }
+            params: { year, month },
         });
+
         return response.data;
     },
 
@@ -245,7 +200,10 @@ export const safetyService = {
      */
     async getOrganizationName(): Promise<string> {
         try {
-            const response = await apiClient.get<{ organizationName: string }>('/organization/name');
+            const response = await apiClient.get<{ organizationName: string }>(
+                '/organization/name'
+            );
+
             return response.data.organizationName;
         } catch (error) {
             console.error('Ошибка при получении названия организации:', error);
@@ -268,7 +226,7 @@ export const safetyService = {
     }> {
         const response = await apiClient.get('/version');
         return response.data;
-    }
+    },
 };
 
 export default safetyService;
