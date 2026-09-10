@@ -8,7 +8,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { FiGrid, FiCalendar as FiYearIcon, FiChevronLeft, FiChevronRight, FiMapPin } from 'react-icons/fi';
-import { CrossCalendar, InjuryModal, LegendPanel, StatsPanel, YearCalendarView } from '../../components/GreenCross'
+import { CrossCalendar, InjuryModal, LegendPanel, StatsPanel, YearCalendarView } from '../../components/greenCross'
 import { useInjuryData, useNavigation, useStatistics } from '../../hooks/greenCross';
 import type { InjuryDto } from '../../types/greenCross';
 import { safetyService } from '../../services/greenCross/api';

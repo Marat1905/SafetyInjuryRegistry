@@ -9,7 +9,7 @@ import { FiX, FiPlus, FiActivity, FiPaperclip, FiTrash2 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import { safetyService } from '../../services/greenCross/api';
 import type { InjuryDto, CreateInjuryRequest, UpdateInjuryRequest } from '../../types/greenCross';
-import { CreateEditInjuryForm, PendingFilesManager, InjuryFilesManager } from '../GreenCross'
+import { CreateEditInjuryForm, PendingFilesManager, InjuryFilesManager } from '../greenCross'
 
 interface InjuryModalProps {
     selectedDate: Date | null;
