@@ -9,7 +9,8 @@ import { FiX, FiPlus, FiActivity, FiPaperclip, FiTrash2 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import { safetyService } from '../../services/greenCross/api';
 import type { InjuryDto, CreateInjuryRequest, UpdateInjuryRequest } from '../../types/greenCross';
-import { CreateEditInjuryForm, PendingFilesManager, InjuryFilesManager } from '../greenCross'
+import { CreateEditInjuryForm, PendingFilesManager, InjuryFilesManager } from '../greenCross';
+import { categoryOptions } from '../../constants/greenCross/categories';
 
 interface InjuryModalProps {
     selectedDate: Date | null;
@@ -164,6 +165,12 @@ const InjuryModal: React.FC<InjuryModalProps> = ({
         }
     };
 
+    // Получить человекочитаемое название категории по её значению
+    const getCategoryLabel = (value: string): string => {
+        const found = categoryOptions.find((opt) => opt.value === value);
+        return found ? found.label : value;
+    };
+
     // Рендер содержимого в зависимости от режима
     const renderContent = () => {
         if (mode === 'view' && selectedInjury) {
@@ -171,25 +178,25 @@ const InjuryModal: React.FC<InjuryModalProps> = ({
                 <div className="space-y-5">
                     <div>
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Дата</label>
-                        <div className="w-full px-4 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl">
+                        <div className="w-full px-4 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl text-gray-800 dark:text-gray-200">
                             {selectedDate ? format(selectedDate, 'dd.MM.yyyy') : ''}
                         </div>
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Категория происшествия</label>
-                        <div className="w-full px-4 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl">
-                            {selectedInjury.category}
+                        <div className="w-full px-4 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl text-gray-800 dark:text-gray-200">
+                            {getCategoryLabel(selectedInjury.category)}
                         </div>
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Тип происшествия</label>
-                        <div className="w-full px-4 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl">
+                        <div className="w-full px-4 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl text-gray-800 dark:text-gray-200">
                             {selectedInjury.type}
                         </div>
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Описание</label>
-                        <div className="w-full px-4 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl min-h-[160px] whitespace-pre-wrap">
+                        <div className="w-full px-4 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl text-gray-800 dark:text-gray-200 min-h-[160px] whitespace-pre-wrap">
                             {selectedInjury.description}
                         </div>
                     </div>
