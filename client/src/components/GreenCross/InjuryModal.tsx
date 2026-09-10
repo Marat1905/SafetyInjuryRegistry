@@ -1,7 +1,12 @@
 /**
  * Модальное окно для просмотра, создания и редактирования травмы.
  * Содержит в себе формы и управление файлами.
- * Режим определяется наличием selectedInjury и ролью пользователя.
+ * Режим определяется наличием selectedInjury и ролью пользователя:
+ *   • если есть selectedInjury и пользователь — инженер ТБ/админ → 'edit';
+ *   • если есть selectedInjury и пользователь без прав → 'view';
+ *   • если нет selectedInjury и пользователь — инженер ТБ/админ → 'create';
+ *   • если нет selectedInjury и пользователь без прав → 'view' (пустой экран,
+ *     но такое состояние не должно возникать, т.к. родитель не открывает модалку).
  */
 import React, { useState, useEffect } from 'react';
 import { format } from 'date-fns';
@@ -38,12 +43,18 @@ const InjuryModal: React.FC<InjuryModalProps> = ({
     const [creating, setCreating] = useState(false);
     const [updating, setUpdating] = useState(false);
 
-    // Определяем режим при открытии
+    // Определяем режим при открытии.
+    // ВАЖНО: режим 'create' выставляется ТОЛЬКО если пользователь имеет
+    // права на редактирование (инженер ТБ/админ). Иначе — 'view'.
     useEffect(() => {
         if (selectedInjury) {
             setMode(isSafetyEngineer ? 'edit' : 'view');
-        } else {
+        } else if (isSafetyEngineer) {
             setMode('create');
+        } else {
+            // Пользователь без прав нажал на день без травмы.
+            // Родитель такое не пропускает, но на всякий случай — 'view'.
+            setMode('view');
         }
     }, [selectedInjury, isSafetyEngineer]);
 

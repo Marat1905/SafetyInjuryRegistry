@@ -3,24 +3,44 @@
  * Управляет режимами отображения (крест/год), навигацией, загрузкой данных,
  * отображает статистику, легенду, календарь и модальное окно для работы с травмами.
  * Также загружает и показывает название организации под заголовком.
+ *
+ * Роль пользователя берётся из AuthContext (в тестовом режиме —
+ * переключается кнопкой в правом верхнем углу экрана).
+ *
+ * Создание / редактирование / удаление травм доступно только
+ * администратору и инженеру по ТБ. Обычный пользователь может
+ * только просматривать уже существующие травмы.
  */
 import React, { useState, useCallback, useEffect } from 'react';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
-import { FiGrid, FiCalendar as FiYearIcon, FiChevronLeft, FiChevronRight, FiMapPin } from 'react-icons/fi';
-import { CrossCalendar, InjuryModal, LegendPanel, StatsPanel, YearCalendarView } from '../../components/greenCross'
+import {
+    FiGrid,
+    FiCalendar as FiYearIcon,
+    FiChevronLeft,
+    FiChevronRight,
+    FiMapPin,
+} from 'react-icons/fi';
+import toast from 'react-hot-toast';
+import {
+    CrossCalendar,
+    InjuryModal,
+    LegendPanel,
+    StatsPanel,
+    YearCalendarView,
+} from '../../components/greenCross';
 import { useInjuryData, useNavigation, useStatistics } from '../../hooks/greenCross';
 import type { InjuryDto } from '../../types/greenCross';
 import { safetyService } from '../../services/greenCross/api';
+import { useAuth } from '../../context/AuthContext';
 
 const GreenCross: React.FC = () => {
-    // Роль: инженер по ТБ (для демонстрации – true, в реальности получается из контекста)
-    const isSafetyEngineer = true;
-    //const { user } = useAuth();
-    //const isSafetyEngineer = useMemo(
-    //    () => user?.roles?.includes('Safety') || user?.roles?.includes('Admin') || false,
-    //    [user]
-    //);
+    // Роль: инженер по ТБ (или админ) — приходит из AuthContext.
+    // В тестовом режиме переключается кнопкой в правом верхнем углу.
+    // testRole — строковое имя текущей тестовой роли ('User' | 'Safety' | 'Admin'),
+    // нужно для наглядного логирования.
+    const { isAdminOrSafety, testRole } = useAuth();
+    const isSafetyEngineer = isAdminOrSafety;
 
     // Состояние для названия организации
     const [organizationName, setOrganizationName] = useState<string>('');
@@ -63,7 +83,7 @@ const GreenCross: React.FC = () => {
     // Обработчик клика по дню (вызывается из CrossCalendar и YearCalendarView)
     const handleDateClick = useCallback(
         (date: Date) => {
-            // Если день будущий и нет травмы – нельзя открыть модалку
+            // Ищем травму в этот день среди загруженных за год
             const injury = injuriesYear.find((inj) => {
                 const injDate = new Date(inj.date);
                 return (
@@ -72,14 +92,40 @@ const GreenCross: React.FC = () => {
                     injDate.getDate() === date.getDate()
                 );
             });
+
+            // Если день будущий и травмы нет – нельзя открыть модалку
             const isFuture = date > new Date() && !injury;
             if (isFuture) return;
+
+            // Если травмы в этот день нет и пользователь не имеет прав
+            // на создание/редактирование – просто показываем тост и выходим.
+            // Модальное окно НЕ открываем.
+            if (!injury && !isSafetyEngineer) {
+                toast('В этот день нет травмы', {
+                    icon: 'ℹ️',
+                });
+                return;
+            }
+
+            // Логируем данные прямо перед открытием модального окна.
+            // testRole — текущая тестовая роль ('User' | 'Safety' | 'Admin'),
+            // isSafetyEngineer — вычисленный флаг (true для Safety и Admin).
+            //console.log('[handleDateClick] Открываем модальное окно:', {
+            //    date,
+            //    dateFormatted: format(date, 'dd.MM.yyyy'),
+            //    injury,
+            //    selectedInjuryId: injury?.id ?? null,
+            //    selectedInjuryCategory: injury?.category ?? null,
+            //    testRole,
+            //    isSafetyEngineer,
+            //    mode: injury ? (isSafetyEngineer ? 'edit' : 'view') : 'create',
+            //});
 
             setSelectedDate(date);
             setSelectedInjury(injury || null);
             setModalOpen(true);
         },
-        [injuriesYear]
+        [injuriesYear, isSafetyEngineer, testRole]
     );
 
     // Закрытие модалки с последующим обновлением данных
@@ -129,8 +175,8 @@ const GreenCross: React.FC = () => {
                             <button
                                 onClick={() => setViewMode('cross')}
                                 className={`flex items-center px-3 py-1.5 rounded-xl text-xs sm:text-sm font-medium transition-colors ${viewMode === 'cross'
-                                        ? 'bg-green-500 text-white'
-                                        : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                                    ? 'bg-green-500 text-white'
+                                    : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
                                     }`}
                             >
                                 <FiGrid className="mr-1.5 w-3.5 h-3.5 sm:w-4 sm:h-4" />
@@ -139,8 +185,8 @@ const GreenCross: React.FC = () => {
                             <button
                                 onClick={() => setViewMode('year')}
                                 className={`flex items-center px-3 py-1.5 rounded-xl text-xs sm:text-sm font-medium transition-colors ${viewMode === 'year'
-                                        ? 'bg-green-500 text-white'
-                                        : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                                    ? 'bg-green-500 text-white'
+                                    : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
                                     }`}
                             >
                                 <FiYearIcon className="mr-1.5 w-3.5 h-3.5 sm:w-4 sm:h-4" />
