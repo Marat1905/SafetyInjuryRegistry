@@ -9,7 +9,7 @@
 import { useState, useEffect } from 'react';
 import { Toaster } from 'react-hot-toast';
 import { FiSun, FiMoon, FiUser, FiShield, FiUserCheck } from 'react-icons/fi';
-import GreenCross from './pages/greenCross/GreenCrossPage';
+import GreenCross from './pages/GreenCross/GreenCrossPage';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import './index.css';
 
