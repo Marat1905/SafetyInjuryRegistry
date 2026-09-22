@@ -2,6 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: safety-injuries-api
+  namespace: uchaly
   labels:
     io.kompose.service: safety-injuries-api
   annotations:
@@ -28,9 +29,9 @@ spec:
           image: ghcr.io/marat1905/safetyinjuryregistry-api:1.2.2
           imagePullPolicy: Always
           ports:
-            - containerPort: 8081
-              protocol: TCP
             - containerPort: 8080
+              protocol: TCP
+            - containerPort: 8081
               protocol: TCP
           env:
             - name: ASPNETCORE_ENVIRONMENT

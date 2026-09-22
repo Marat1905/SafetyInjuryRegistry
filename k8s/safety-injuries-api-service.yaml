@@ -1,9 +1,10 @@
 apiVersion: v1
 kind: Service
 metadata:
+  name: safety-injuries-api
+  namespace: uchaly
   labels:
     io.kompose.service: safety-injuries-api
-  name: safety-injuries-api
 spec:
   type: NodePort
   ports:
