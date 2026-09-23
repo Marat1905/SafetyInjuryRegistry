@@ -10,6 +10,10 @@
  * Создание / редактирование / удаление травм доступно только
  * администратору и инженеру по ТБ. Обычный пользователь может
  * только просматривать уже существующие травмы.
+ *
+ * Версия бэкенда (Safety.Injuries.API) отображается в левой колонке,
+ * сразу под панелью «Легенда». Получается с эндпоинта
+ * /safety/api/v1/version через хук useBackendVersion.
  */
 import React, { useState, useCallback, useEffect } from 'react';
 import { format } from 'date-fns';
@@ -29,7 +33,7 @@ import {
     StatsPanel,
     YearCalendarView,
 } from '../../components/greenCross';
-import { useInjuryData, useNavigation, useStatistics } from '../../hooks/greenCross';
+import { useInjuryData, useNavigation, useStatistics, useBackendVersion } from '../../hooks/greenCross';
 import type { InjuryDto } from '../../types/greenCross';
 import { safetyService } from '../../services/greenCross/api';
 import { useAuth } from '../../context/AuthContext';
@@ -41,6 +45,9 @@ const GreenCross: React.FC = () => {
     // нужно для наглядного логирования.
     const { isAdminOrSafety, testRole } = useAuth();
     const isSafetyEngineer = isAdminOrSafety;
+
+    // Версия бэкенда (null, пока не загружена)
+    const version = useBackendVersion();
 
     // Состояние для названия организации
     const [organizationName, setOrganizationName] = useState<string>('');
@@ -225,6 +232,21 @@ const GreenCross: React.FC = () => {
                     <div className="lg:w-80 space-y-5">
                         <StatsPanel statistics={statistics} />
                         <LegendPanel />
+
+                        {/* Версия бэкенда — компактный бейдж сразу под панелью «Легенда».
+                            Отображается только когда данные успешно загружены. */}
+                        {version && (
+                            <div
+                                className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-2xl bg-white/60 dark:bg-gray-800/60 backdrop-blur-sm text-[11px] sm:text-xs font-mono text-gray-400 dark:text-gray-500"
+                                title={`Версия бэкенда: ${version}`}
+                            >
+                                <svg className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-green-500/70 dark:text-green-400/70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01" />
+                                </svg>
+                                <span>v{version}</span>
+                            </div>
+                        )}
+
                         {isSafetyEngineer && (
                             <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-5">
                                 <div className="flex items-center text-green-600 dark:text-green-400">

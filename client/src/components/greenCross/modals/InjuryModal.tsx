@@ -12,10 +12,11 @@ import React, { useState, useEffect } from 'react';
 import { format } from 'date-fns';
 import { FiX, FiPlus, FiActivity, FiPaperclip, FiTrash2 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
-import { safetyService } from '../../services/greenCross/api';
-import type { InjuryDto, CreateInjuryRequest, UpdateInjuryRequest } from '../../types/greenCross';
-import { CreateEditInjuryForm, PendingFilesManager, InjuryFilesManager } from '../greenCross';
-import { categoryOptions } from '../../constants/greenCross/categories';
+import { safetyService } from '../../../services/greenCross/api';
+import type { InjuryDto, CreateInjuryRequest, UpdateInjuryRequest } from '../../../types/greenCross';
+import { CreateEditInjuryForm } from '../forms';
+import { PendingFilesManager, InjuryFilesManager } from '../files';
+import { categoryOptions } from '../../../constants/greenCross/categories';
 
 interface InjuryModalProps {
     selectedDate: Date | null;

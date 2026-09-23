@@ -1,12 +1,19 @@
 /**
  * Экспорт всех компонентов модуля Green Cross для удобного импорта.
  */
-export { default as CrossCalendar } from './CrossCalendar';
-export { default as YearCalendarView } from './YearCalendarView';
-export { default as MonthView } from './MonthView';
+
+// Отображение (в корне)
 export { default as StatsPanel } from './StatsPanel';
 export { default as LegendPanel } from './LegendPanel';
-export { default as InjuryModal } from './InjuryModal';
-export { default as CreateEditInjuryForm } from './CreateEditInjuryForm';
-export { default as PendingFilesManager } from './PendingFilesManager';
-export { default as InjuryFilesManager } from './InjuryFilesManager';
+
+// Основные компоненты со своими подпапками
+export * from './CrossCalendar';
+export * from './YearCalendarView';
+export * from './forms';
+export * from './files';
+export * from './modals';
+
+// Реэкспорт MonthView для обратной совместимости: раньше он экспортировался
+// из barrel как именованный экспорт (`export { default as MonthView }`),
+// теперь живёт внутри YearCalendarView, но также доступен через barrel
+// YearCalendarView/index.ts, а значит — и через этот barrel.

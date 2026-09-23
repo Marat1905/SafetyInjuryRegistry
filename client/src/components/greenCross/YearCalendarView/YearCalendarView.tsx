@@ -3,8 +3,8 @@
  * Каждый месяц отрисовывается компонентом MonthView.
  */
 import React from 'react';
-import type { InjuryDto } from '../../types/greenCross';
-import { MonthView } from '../greenCross'
+import type { InjuryDto } from '../../../types/greenCross';
+import MonthView from './MonthView';
 
 interface YearCalendarViewProps {
     year: number;

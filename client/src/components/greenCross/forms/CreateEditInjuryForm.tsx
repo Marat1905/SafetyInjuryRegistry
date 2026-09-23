@@ -8,8 +8,8 @@ import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { format } from 'date-fns';
 import { FiTrash2, FiPlus } from 'react-icons/fi';
-import { createInjurySchema, updateInjurySchema, type CreateInjuryFormData, type UpdateInjuryFormData } from '../../schemas/greenCross';
-import { categoryOptions } from '../../constants/greenCross/categories';
+import { createInjurySchema, updateInjurySchema, type CreateInjuryFormData, type UpdateInjuryFormData } from '../../../schemas/greenCross';
+import { categoryOptions } from '../../../constants/greenCross/categories';
 
 interface CreateEditInjuryFormProps {
     mode: 'create' | 'edit';
