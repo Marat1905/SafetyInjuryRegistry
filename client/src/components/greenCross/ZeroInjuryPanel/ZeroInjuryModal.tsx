@@ -8,10 +8,10 @@
  *  • «История» — все завершённые периоды (успешно завершённые и прерванные
  *    травмой). Для Safety/Admin доступны удаление и переход к просмотру.
  *
- * Общие элементы:
- *  • Кнопка «Начать новый период» — сверху, видна только на вкладке «Период».
- *    Активна, когда нет активной программы и у пользователя есть права.
- *  • Кнопка «X» — закрытие модалки.
+ * Кнопка «Начать новый период» отображается ТОЛЬКО для Safety/Admin
+ * и только на вкладке «Период». Для обычных пользователей её нет в DOM
+ * вовсе — это осознанное решение: не показывать действие, которое всё
+ * равно недоступно, чтобы не создавать визуального шума.
  *
  * Режимы формы (mode):
  *  • 'create' — создание новой программы;
@@ -242,6 +242,8 @@ const ZeroInjuryModal: React.FC<ZeroInjuryModalProps> = ({
     };
 
     // Переключение на создание новой программы.
+    // Метод вызывается только из UI, который доступен Safety/Admin, но для
+    // подстраховки оставляем явную проверку прав и в самом обработчике.
     const handleStartNew = () => {
         if (!isSafetyEngineer) {
             toast.error('Недостаточно прав');
@@ -479,6 +481,8 @@ const ZeroInjuryModal: React.FC<ZeroInjuryModalProps> = ({
     const renderView = () => {
         const program = editingProgram ?? status.currentProgram ?? status.lastFinalizedProgram;
         if (!program) {
+            // Для Safety/Admin без программы — показываем форму создания.
+            // Для обычного пользователя — заглушку с пояснением.
             if (isSafetyEngineer) return renderForm();
             return (
                 <div className="text-center py-10 text-gray-400 dark:text-gray-500">
@@ -631,7 +635,10 @@ const ZeroInjuryModal: React.FC<ZeroInjuryModalProps> = ({
                     />
                 </div>
 
-                {/* Нижняя панель */}
+                {/* Нижняя панель.
+                    Кнопка «Удалить период» показывается только Safety/Admin.
+                    Кнопка «Начать новый период» рисуется в отдельном блоке
+                    сверху и в этом блоке не дублируется. */}
                 <div className="flex flex-wrap items-center justify-between gap-2 pt-4 border-t border-gray-200 dark:border-gray-700">
                     <div>
                         {isSafetyEngineer && program.isCompleted && (
@@ -871,21 +878,30 @@ const ZeroInjuryModal: React.FC<ZeroInjuryModalProps> = ({
                     </div>
                 </div>
 
-                {/* Кнопка «Начать новый период» — только на вкладке «Период» и не в режиме create */}
-                {tab === 'period' && mode !== 'create' && (
+                {/*
+                  Кнопка «Начать новый период».
+
+                  Видна ТОЛЬКО когда одновременно выполняются три условия:
+                    1) пользователь — Safety или Admin (isSafetyEngineer);
+                    2) открыта вкладка «Период» (tab === 'period');
+                    3) мы НЕ внутри формы создания (mode !== 'create') —
+                       иначе кнопка «Создать» в самой форме уже делает то же самое.
+
+                  Для обычного пользователя этот блок не рендерится вовсе —
+                  никакого disabled-состояния, никакого визуального шума.
+                */}
+                {isSafetyEngineer && tab === 'period' && mode !== 'create' && (
                     <div className="px-5 pt-4">
                         <button
                             type="button"
                             onClick={handleStartNew}
-                            disabled={!isSafetyEngineer || !status.canStartNew}
+                            disabled={!status.canStartNew}
                             title={
                                 !status.canStartNew
                                     ? 'Дождитесь завершения текущего периода'
-                                    : !isSafetyEngineer
-                                        ? 'Недостаточно прав'
-                                        : 'Начать новый период'
+                                    : 'Начать новый период'
                             }
-                            className={`w-full py-2.5 rounded-xl border-2 border-dashed flex items-center justify-center gap-2 transition-colors ${isSafetyEngineer && status.canStartNew
+                            className={`w-full py-2.5 rounded-xl border-2 border-dashed flex items-center justify-center gap-2 transition-colors ${status.canStartNew
                                     ? 'border-blue-400 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20'
                                     : 'border-gray-300 dark:border-gray-600 text-gray-400 cursor-not-allowed'
                                 }`}

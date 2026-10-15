@@ -75,6 +75,33 @@ public class ZeroInjuryProgram : BaseEntity
     public DateTime? FinalizedAt { get; set; }
 
     /// <summary>
+    /// Токен конкурентности (concurrency token) на основе системной колонки
+    /// PostgreSQL <c>xmin</c>. Значение автоматически изменяется PostgreSQL
+    /// при каждом <c>UPDATE</c> строки, а EF Core:
+    /// <list type="bullet">
+    /// <item><description>читает его при <c>SELECT</c> и сохраняет в этом свойстве;</description></item>
+    /// <item><description>добавляет условие <c>WHERE xmin = @original</c> в <c>UPDATE</c> и <c>DELETE</c>;</description></item>
+    /// <item><description>выбрасывает <see cref="Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException"/>,
+    /// если между чтением и записью строку успел изменить другой пользователь.</description></item>
+    /// </list>
+    ///
+    /// Для программы «Ноль травм» конкурентность особенно важна: инженер ТБ
+    /// редактирует дату начала или целевую длительность, а в этот момент
+    /// сервис <c>RecalculateAsync</c> может автоматически финализировать
+    /// программу по факту травмы. Без токена один из апдейтов молча
+    /// перезаписал бы другой.
+    ///
+    /// В отличие от SQL Server, где аналог обычно имеет тип <c>byte[]</c>,
+    /// в PostgreSQL системный столбец <c>xmin</c> — это 32-битное беззнаковое
+    /// целое (<see cref="uint"/>). Соответствующим образом настроено в
+    /// <see cref="Infrastructure.Configurations.ZeroInjuryProgramConfiguration"/>.
+    ///
+    /// Значение свойства обновляется только хранилищем (после <c>INSERT</c>
+    /// и <c>UPDATE</c>), вручную его присваивать не нужно.
+    /// </summary>
+    public uint RowVersion { get; set; }
+
+    /// <summary>
     /// Вычисляемое свойство: количество дней, «прожитых» программой.
     ///
     /// Для активной программы — это количество дней от старта до сегодня.

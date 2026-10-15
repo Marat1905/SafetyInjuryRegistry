@@ -6,6 +6,8 @@ namespace Safety.Injuries.Infrastructure.Configurations;
 
 /// <summary>
 /// Конфигурация таблицы и отображения для сущности <see cref="ZeroInjuryProgram"/> в базе данных.
+/// Задаёт имя таблицы, первичный ключ, обязательность и длину полей, токен конкурентности
+/// на основе <c>xmin</c>, индексы и связи с другими сущностями.
 /// </summary>
 public class ZeroInjuryProgramConfiguration : IEntityTypeConfiguration<ZeroInjuryProgram>
 {
@@ -52,6 +54,31 @@ public class ZeroInjuryProgramConfiguration : IEntityTypeConfiguration<ZeroInjur
 
         // Дата фактического завершения
         builder.Property(p => p.FinalizedAt);
+
+        // ------------------------------------------------------------------
+        // Токен конкурентности на основе системной колонки PostgreSQL xmin.
+        //
+        // Конкурентность для программы «Ноль травм» — критична: пользователь
+        // может редактировать активную программу (например, менять дату старта
+        // или описание), а параллельно сервис RecalculateAsync может
+        // автоматически финализировать её по факту травмы. Без токена
+        // один апдейт молча перезаписал бы другой, и статус программы оказался
+        // бы неконсистентным.
+        //
+        // Механика — та же, что и в InjuryConfiguration:
+        //   • PostgreSQL автоматически ведёт xmin;
+        //   • EF Core использует его как «версию строки»;
+        //   • при конфликте выбрасывается DbUpdateConcurrencyException.
+        //
+        // Настройки .HasColumnName("xmin") / .HasColumnType("xid") /
+        // .ValueGeneratedOnAddOrUpdate() / .IsConcurrencyToken()
+        // аналогичны тем, что используются в InjuryConfiguration.
+        // ------------------------------------------------------------------
+        builder.Property(p => p.RowVersion)
+            .HasColumnName("xmin")
+            .HasColumnType("xid")
+            .ValueGeneratedOnAddOrUpdate()
+            .IsConcurrencyToken();
 
         // Вычисляемые свойства — не мапятся в БД, так как вычисляются на лету в C#
         builder.Ignore(p => p.DaysPassed);

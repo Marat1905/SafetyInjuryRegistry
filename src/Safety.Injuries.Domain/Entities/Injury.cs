@@ -40,6 +40,30 @@ public class Injury : BaseEntity
     public InjuryCategory Category { get; set; }
 
     /// <summary>
+    /// Токен конкурентности (concurrency token) на основе системной колонки
+    /// PostgreSQL <c>xmin</c>. Значение автоматически изменяется PostgreSQL
+    /// при каждом <c>UPDATE</c> строки, а EF Core:
+    /// <list type="bullet">
+    /// <item><description>читает его при <c>SELECT</c> и сохраняет в этом свойстве;</description></item>
+    /// <item><description>добавляет условие <c>WHERE xmin = @original</c> в <c>UPDATE</c> и <c>DELETE</c>;</description></item>
+    /// <item><description>выбрасывает <see cref="Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException"/>,
+    /// если между чтением и записью строку успел изменить другой пользователь.</description></item>
+    /// </list>
+    ///
+    /// В отличие от SQL Server, где аналог обычно имеет тип <c>byte[]</c>,
+    /// в PostgreSQL системный столбец <c>xmin</c> — это 32-битное беззнаковое
+    /// целое (<see cref="uint"/>). Соответствующим образом настроено в
+    /// <see cref="Infrastructure.Configurations.InjuryConfiguration"/>.
+    ///
+    /// Значение свойства обновляется только хранилищем (после <c>INSERT</c>
+    /// и <c>UPDATE</c>), вручную его присваивать не нужно. Отдавать его в API
+    /// клиенту также не требуется: в текущей архитектуре чтение и запись
+    /// происходят в рамках одной HTTP-сессии, и EF Core сам сравнивает
+    /// «прочитанный» xmin с текущим при сохранении.
+    /// </summary>
+    public uint RowVersion { get; set; }
+
+    /// <summary>
     /// Коллекция файлов, прикреплённых к данной травме.
     /// Отношение «один ко многим»: одна травма может иметь несколько файлов.
     /// При удалении травмы все связанные файлы удаляются каскадно.
