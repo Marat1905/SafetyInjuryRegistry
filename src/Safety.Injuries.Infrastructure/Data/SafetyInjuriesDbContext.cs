@@ -29,15 +29,17 @@ public class SafetyInjuriesDbContext : DbContext
     {
     }
 
-    /// <summary>
-    /// Набор сущностей травм.
-    /// </summary>
+    /// <summary>Набор сущностей травм.</summary>
     public DbSet<Injury> Injuries { get; set; }
 
-    /// <summary>
-    /// Набор сущностей файлов, прикреплённых к травмам.
-    /// </summary>
+    /// <summary>Набор сущностей файлов, прикреплённых к травмам.</summary>
     public DbSet<InjuryFile> InjuryFiles { get; set; }
+
+    /// <summary>Набор сущностей программ «Ноль травм» (365 дней без П1/П2).</summary>
+    public DbSet<ZeroInjuryProgram> ZeroInjuryPrograms { get; set; }
+
+    /// <summary>Набор сущностей документов программы «Ноль травм» (приказы, распоряжения и т.д.).</summary>
+    public DbSet<ZeroInjuryDocument> ZeroInjuryDocuments { get; set; }
 
     /// <summary>
     /// Настраивает модели и отношения между сущностями.
@@ -48,6 +50,8 @@ public class SafetyInjuriesDbContext : DbContext
         // Применяем конфигурации из отдельных классов
         modelBuilder.ApplyConfiguration(new InjuryConfiguration());
         modelBuilder.ApplyConfiguration(new InjuryFileConfiguration());
+        modelBuilder.ApplyConfiguration(new ZeroInjuryProgramConfiguration());
+        modelBuilder.ApplyConfiguration(new ZeroInjuryDocumentConfiguration());
 
         // Конфигурация для автоматического преобразования DateTime в UTC
         ConfigureDateTimeProperties(modelBuilder);
