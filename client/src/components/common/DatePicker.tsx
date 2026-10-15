@@ -1,6 +1,6 @@
 import React, { useState, useRef, useLayoutEffect } from "react";
 import { FiCalendar } from "react-icons/fi";
-import { format } from "date-fns";
+import { format, startOfDay, endOfDay } from "date-fns";
 import { ru } from "date-fns/locale";
 import { Calendar } from 'react-date-range';
 import 'react-date-range/dist/styles.css';
@@ -104,7 +104,22 @@ const DatePicker: React.FC<DatePickerProps> = ({
         }
     };
 
-    const effectiveMaxDate = maxDate ?? new Date();
+    /**
+     * КРИТИЧНО: нормализуем границы к началу/концу ЛОКАЛЬНОГО дня.
+     *
+     * Причина: react-date-range сравнивает дни как локальные даты (start-of-day
+     * в локальной зоне), а с бэкенда minDate приходит как UTC-строка
+     * (например, "2026-10-15T00:00:00Z"). В московской зоне (UTC+3) это
+     * 15.10.2026 03:00 MSK, и день 15.10.2026 (его start-of-day = 00:00 MSK)
+     * оказывается "меньше" minDate → день блокируется.
+     *
+     * Аналогично maxDate = new Date() в ранние часы может оказаться меньше
+     * minDate, что блокирует вообще все дни.
+     *
+     * startOfDay/endOfDay убирают эти часовые эффекты.
+     */
+    const effectiveMinDate = minDate ? startOfDay(minDate) : undefined;
+    const effectiveMaxDate = maxDate ? endOfDay(maxDate) : endOfDay(new Date());
 
     return (
         <div className="relative w-full">
@@ -133,7 +148,7 @@ const DatePicker: React.FC<DatePickerProps> = ({
                             <Calendar
                                 date={selectedDate}
                                 onChange={handleDateSelect}
-                                minDate={minDate}
+                                minDate={effectiveMinDate}
                                 maxDate={effectiveMaxDate}
                                 locale={ru}
                                 dateDisplayFormat="dd.MM.yyyy"

@@ -38,6 +38,37 @@ public class MappingProfile : Profile
         // InjuryFile -> InjuryFileDto
         CreateMap<InjuryFile, InjuryFileDto>()
             .ForMember(dest => dest.CreatedAt, opt => opt.MapFrom(src => src.CreatedAt));
+
+        // ZeroInjuryProgram -> ZeroInjuryProgramDto
+        //
+        // DaysPassed / DaysRemaining теперь вычисляются в самой сущности с учётом
+        // статуса финализации (для прерванной программы берётся дата травмы,
+        // для успешной — полный целевой период, для активной — до сегодня).
+        // Здесь просто указываем AutoMapper использовать эти свойства напрямую,
+        // чтобы избежать расхождений.
+        CreateMap<ZeroInjuryProgram, ZeroInjuryProgramDto>()
+            // Целевой период хранится в TargetDaysInternal, в DTO называется TargetDays.
+            .ForMember(dest => dest.TargetDays,
+                opt => opt.MapFrom(src => src.TargetDaysInternal))
+            .ForMember(dest => dest.DaysPassed,
+                opt => opt.MapFrom(src => src.DaysPassed))
+            .ForMember(dest => dest.DaysRemaining,
+                opt => opt.MapFrom(src => src.DaysRemaining))
+            // Итоговый статус собираем на основе флагов.
+            .ForMember(dest => dest.Status,
+                opt => opt.MapFrom(src =>
+                    !src.IsFinalized
+                        ? "Active"
+                        : (src.IsSuccessfullyCompleted ? "Completed" : "Interrupted")))
+            .ForMember(dest => dest.IsCompleted,
+                opt => opt.MapFrom(src => src.IsFinalized))
+            .ForMember(dest => dest.CompletedAt,
+                opt => opt.MapFrom(src => src.CompletedAt))
+            .ForMember(dest => dest.Documents,
+                opt => opt.MapFrom(src => src.Documents));
+
+        // ZeroInjuryDocument -> ZeroInjuryDocumentDto
+        CreateMap<ZeroInjuryDocument, ZeroInjuryDocumentDto>();
     }
 
     /// <summary>

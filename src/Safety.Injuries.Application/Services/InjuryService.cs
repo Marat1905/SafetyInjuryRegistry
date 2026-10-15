@@ -8,15 +8,31 @@ using Safety.Injuries.Domain.Interfaces;
 
 namespace Safety.Injuries.Application.Services;
 
+/// <summary>
+/// Сервис управления травмами.
+///
+/// После каждой операции, изменяющей набор травм (создание, обновление, удаление),
+/// запускается пересчёт статусов всех программ «Ноль травм», чтобы:
+/// <list type="bullet">
+/// <item><description>активная программа своевременно прерывалась при появлении значимой травмы;</description></item>
+/// <item><description>прерванная программа автоматически «оживала», если травма-прерыватель
+/// была удалена или переквалифицирована на незначимую категорию (П3–П6).</description></item>
+/// </list>
+/// </summary>
 public class InjuryService : IInjuryService
 {
     private readonly IInjuryRepository _repository;
     private readonly IMapper _mapper;
+    private readonly IZeroInjuryProgramService _zeroInjuryProgramService;
 
-    public InjuryService(IInjuryRepository repository, IMapper mapper)
+    public InjuryService(
+        IInjuryRepository repository,
+        IMapper mapper,
+        IZeroInjuryProgramService zeroInjuryProgramService)
     {
         _repository = repository;
         _mapper = mapper;
+        _zeroInjuryProgramService = zeroInjuryProgramService;
     }
 
     public async Task<IEnumerable<InjuryDto>> GetByMonthAsync(int year, int month)
@@ -103,6 +119,11 @@ public class InjuryService : IInjuryService
         injury.CreatedAt = DateTime.UtcNow;
 
         var created = await _repository.AddAsync(injury);
+
+        // Пересчёт статусов программ «Ноль травм»: возможно, новая значимая травма
+        // прерывает активную программу.
+        await SafeRecalculateZeroInjuryAsync();
+
         return _mapper.Map<InjuryDto>(created);
     }
 
@@ -124,6 +145,12 @@ public class InjuryService : IInjuryService
         existing.UpdatedAt = DateTime.UtcNow;
 
         var updated = await _repository.UpdateAsync(existing);
+
+        // Пересчёт статусов программ «Ноль травм»: категория могла измениться
+        // с П1/П2 на П3–П6 (или наоборот), и прерванная ранее программа
+        // должна автоматически восстановиться или быть прервана заново.
+        await SafeRecalculateZeroInjuryAsync();
+
         return _mapper.Map<InjuryDto>(updated);
     }
 
@@ -135,5 +162,32 @@ public class InjuryService : IInjuryService
 
         // Физическое удаление
         await _repository.DeleteAsync(existing);
+
+        // Пересчёт статусов программ «Ноль травм»: если была удалена травма,
+        // прервавшая программу, она должна снова стать активной.
+        await SafeRecalculateZeroInjuryAsync();
+    }
+
+    /// <summary>
+    /// Безопасный вызов пересчёта статусов программ «Ноль травм».
+    ///
+    /// Пересчёт — второстепенная операция: если по какой-то причине он упадёт
+    /// (например, из-за гонки или ошибки в данных), основная операция над травмой
+    /// не должна падать вместе с ним. Ошибка проглатывается, чтобы не ломать UI.
+    /// </summary>
+    private async Task SafeRecalculateZeroInjuryAsync()
+    {
+        try
+        {
+            await _zeroInjuryProgramService.RecalculateAsync();
+        }
+        catch (Exception ex)
+        {
+            // Осознанно проглатываем — записи о травме уже сохранены,
+            // а статус программы пересчитается при следующем запросе статуса
+            // (GetStatusAsync также вызывает RecalculateAsync).
+            Console.Error.WriteLine(
+                $"[InjuryService] RecalculateAsync для программ «Ноль травм» завершился ошибкой: {ex.Message}");
+        }
     }
 }

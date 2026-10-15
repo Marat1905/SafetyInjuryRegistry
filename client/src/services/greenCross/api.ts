@@ -227,6 +227,122 @@ export const safetyService = {
         const response = await apiClient.get('/version');
         return response.data;
     },
+    /**
+ * Получить статус программы «Ноль травм»: активная программа, последняя значимая травма,
+ * минимально допустимая дата начала новой программы.
+ */
+    async getZeroInjuryStatus(): Promise<import('../../types/greenCross').ZeroInjuryStatusDto> {
+        const response = await apiClient.get('/zero-injury/status');
+        return response.data;
+    },
+
+    /**
+     * Получить историю программ «Ноль травм» (от новых к старым).
+     */
+    async getZeroInjuryHistory(): Promise<import('../../types/greenCross').ZeroInjuryProgramDto[]> {
+        const response = await apiClient.get('/zero-injury/history');
+        return response.data;
+    },
+
+    /**
+     * Получить одну программу по идентификатору.
+     * @param id - идентификатор программы
+     */
+    async getZeroInjuryProgramById(id: string): Promise<import('../../types/greenCross').ZeroInjuryProgramDto> {
+        const response = await apiClient.get(`/zero-injury/${id}`);
+        return response.data;
+    },
+
+    /**
+     * Создать новую программу «Ноль травм».
+     * @param data - параметры новой программы
+     */
+    async createZeroInjuryProgram(
+        data: import('../../types/greenCross').CreateZeroInjuryProgramRequest
+    ): Promise<import('../../types/greenCross').ZeroInjuryProgramDto> {
+        const response = await apiClient.post('/zero-injury', data);
+        return response.data;
+    },
+
+    /**
+     * Обновить существующую активную программу.
+     * @param id - идентификатор программы
+     * @param data - новые значения полей
+     */
+    async updateZeroInjuryProgram(
+        id: string,
+        data: import('../../types/greenCross').UpdateZeroInjuryProgramRequest
+    ): Promise<import('../../types/greenCross').ZeroInjuryProgramDto> {
+        const response = await apiClient.put(`/zero-injury/${id}`, data);
+        return response.data;
+    },
+
+    /**
+     * Удалить программу «Ноль травм» вместе с документами.
+     * @param id - идентификатор программы
+     */
+    async deleteZeroInjuryProgram(id: string): Promise<void> {
+        await apiClient.delete(`/zero-injury/${id}`);
+    },
+
+    /**
+     * Получить список документов программы.
+     * @param programId - идентификатор программы
+     */
+    async getZeroInjuryDocuments(
+        programId: string
+    ): Promise<import('../../types/greenCross').ZeroInjuryDocumentDto[]> {
+        const response = await apiClient.get(`/zero-injury/${programId}/documents`);
+        return response.data;
+    },
+
+    /**
+     * Загрузить документ в программу.
+     * @param programId - идентификатор программы
+     * @param file - файл
+     * @param documentType - тип документа (Order, Act, Report, Other)
+     * @param description - описание (необязательно)
+     */
+    async uploadZeroInjuryDocument(
+        programId: string,
+        file: File,
+        documentType: string,
+        description?: string
+    ): Promise<import('../../types/greenCross').ZeroInjuryDocumentDto> {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('documentType', documentType);
+        if (description) {
+            formData.append('description', description);
+        }
+
+        const response = await apiClient.post(
+            `/zero-injury/${programId}/documents`,
+            formData,
+            {
+                headers: { 'Content-Type': 'multipart/form-data' },
+            }
+        );
+        return response.data;
+    },
+
+    /**
+     * Скачать документ программы.
+     */
+    async downloadZeroInjuryDocument(programId: string, documentId: string): Promise<Blob> {
+        const response = await apiClient.get(
+            `/zero-injury/${programId}/documents/${documentId}`,
+            { responseType: 'blob' }
+        );
+        return response.data;
+    },
+
+    /**
+     * Удалить документ программы.
+     */
+    async deleteZeroInjuryDocument(programId: string, documentId: string): Promise<void> {
+        await apiClient.delete(`/zero-injury/${programId}/documents/${documentId}`);
+    },
 };
 
 export default safetyService;

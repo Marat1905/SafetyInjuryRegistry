@@ -40,7 +40,24 @@ public class ZeroInjuryProgramConfiguration : IEntityTypeConfiguration<ZeroInjur
             .IsRequired()
             .HasMaxLength(200);
 
+        // Флаг финализации программы
+        builder.Property(p => p.IsFinalized)
+            .IsRequired()
+            .HasDefaultValue(false);
+
+        // Флаг успешного завершения
+        builder.Property(p => p.IsSuccessfullyCompleted)
+            .IsRequired()
+            .HasDefaultValue(false);
+
+        // Дата фактического завершения
+        builder.Property(p => p.FinalizedAt);
+
         // Вычисляемые свойства — не мапятся в БД, так как вычисляются на лету в C#
+        builder.Ignore(p => p.DaysPassed);
+        builder.Ignore(p => p.DaysRemaining);
+        builder.Ignore(p => p.IsPeriodElapsed);
+        builder.Ignore(p => p.PlannedCompletionDate);
         builder.Ignore(p => p.IsCompleted);
         builder.Ignore(p => p.CompletedAt);
 
@@ -55,5 +72,11 @@ public class ZeroInjuryProgramConfiguration : IEntityTypeConfiguration<ZeroInjur
             .WithOne(d => d.Program)
             .HasForeignKey(d => d.ProgramId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        // Индекс по дате начала для быстрой сортировки истории
+        builder.HasIndex(p => p.StartDate);
+
+        // Индекс по флагу финализации для быстрого поиска активной программы
+        builder.HasIndex(p => p.IsFinalized);
     }
 }
