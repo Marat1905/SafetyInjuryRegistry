@@ -19,7 +19,10 @@ import {
 import toast from 'react-hot-toast';
 import { safetyService } from '../../../services/greenCross/api';
 import type { ZeroInjuryDocumentDto } from '../../../types/greenCross';
-import { documentTypeOptions, getDocumentTypeLabel } from '../../../constants/greenCross/documentTypes';
+import {
+    documentTypeOptions,
+    getDocumentTypeLabel,
+} from '../../../constants/greenCross/documentTypes';
 
 // ----------------------------------------------------------------------
 // Константы валидации (соответствуют бэкенду UploadZeroInjuryDocumentFormValidator)
@@ -57,8 +60,10 @@ const formatDate = (dateStr: string): string => {
 };
 
 const getFileIcon = (contentType: string) => {
-    if (contentType.startsWith('image/')) return <FiImage className="w-5 h-5 text-blue-500" />;
-    if (contentType === 'application/pdf') return <FiFileText className="w-5 h-5 text-red-500" />;
+    if (contentType.startsWith('image/'))
+        return <FiImage className="w-5 h-5 text-blue-500" />;
+    if (contentType === 'application/pdf')
+        return <FiFileText className="w-5 h-5 text-red-500" />;
     return <FiFile className="w-5 h-5 text-gray-500" />;
 };
 
@@ -79,6 +84,29 @@ interface ZeroInjuryDocumentsManagerProps {
     programId: string;
     isEditable: boolean;
 }
+
+// ----------------------------------------------------------------------
+// Общие CSS-классы для полей ввода и селектов внутри очереди загрузки.
+// Вынесены отдельно, чтобы в обеих ветках (в форме и в PendingFilesManager)
+// использовался одинаковый стиль.
+//
+// Ключевые моменты:
+//  • `[color-scheme:dark]` в тёмной теме — заставляет браузер использовать
+//    тёмную нативную палитру для <select> (стрелка, выпадающий список,
+//    скроллбар). Без этого Chrome/Safari рисуют нативные части светлыми.
+//  • Явный `text-gray-800 dark:text-gray-100` — иначе текст в <select>
+//    в тёмной теме может сливаться с фоном.
+//  • `placeholder-gray-400 dark:placeholder-gray-500` — серый placeholder,
+//    но заметно темнее в тёмной теме, чтобы не «резал глаз».
+// ----------------------------------------------------------------------
+const FIELD_BASE_CLASSES =
+    'w-full px-2 py-1 text-xs border rounded-lg ' +
+    'bg-gray-50 dark:bg-gray-700 ' +
+    'border-gray-300 dark:border-gray-600 ' +
+    'text-gray-800 dark:text-gray-100 ' +
+    'placeholder-gray-400 dark:placeholder-gray-500 ' +
+    'focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-transparent ' +
+    'dark:[color-scheme:dark]';
 
 // ----------------------------------------------------------------------
 // Компонент
@@ -232,14 +260,16 @@ const ZeroInjuryDocumentsManager: React.FC<ZeroInjuryDocumentsManagerProps> = ({
                 console.error('Ошибка загрузки документа:', err);
                 setQueue((prev) =>
                     prev.map((q) =>
-                        q.id === item.id ? { ...q, status: 'error', error: 'Ошибка загрузки' } : q
+                        q.id === item.id
+                            ? { ...q, status: 'error', error: 'Ошибка загрузки' }
+                            : q
                     )
                 );
                 toast.error(`Ошибка загрузки "${item.file.name}"`);
             }
         }
 
-        // Через 3 секунды убираем успешные и ошибочные из очереди
+        // Через 3 секунды убираем успешные и ошибочные из очереди.
         setTimeout(() => {
             setQueue((prev) => prev.filter((item) => item.status === 'pending'));
         }, 3000);
@@ -250,7 +280,10 @@ const ZeroInjuryDocumentsManager: React.FC<ZeroInjuryDocumentsManagerProps> = ({
     // ------------------------------------------------------------------
     const handleDownload = async (doc: ZeroInjuryDocumentDto) => {
         try {
-            const blob = await safetyService.downloadZeroInjuryDocument(programId, doc.id);
+            const blob = await safetyService.downloadZeroInjuryDocument(
+                programId,
+                doc.id
+            );
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
@@ -299,8 +332,7 @@ const ZeroInjuryDocumentsManager: React.FC<ZeroInjuryDocumentsManagerProps> = ({
                     onDragOver={handleDragOver}
                     onDrop={handleDrop}
                     onClick={() => fileInputRef.current?.click()}
-                    className={`relative rounded-xl border-2 border-dashed transition-all cursor-pointer
-                        ${isDragging
+                    className={`relative rounded-xl border-2 border-dashed transition-all cursor-pointer ${isDragging
                             ? 'border-green-500 bg-green-50 dark:bg-green-900/20'
                             : 'border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/30 hover:bg-gray-100 dark:hover:bg-gray-800/50'
                         }`}
@@ -314,9 +346,14 @@ const ZeroInjuryDocumentsManager: React.FC<ZeroInjuryDocumentsManagerProps> = ({
                         className="hidden"
                     />
                     <div className="flex flex-col items-center justify-center py-5 px-4">
-                        <FiUpload className={`w-6 h-6 mb-2 ${isDragging ? 'text-green-500' : 'text-gray-400'}`} />
+                        <FiUpload
+                            className={`w-6 h-6 mb-2 ${isDragging ? 'text-green-500' : 'text-gray-400'
+                                }`}
+                        />
                         <p className="text-xs text-gray-600 dark:text-gray-300 text-center">
-                            {isDragging ? 'Отпустите файлы для загрузки' : 'Перетащите или кликните для выбора'}
+                            {isDragging
+                                ? 'Отпустите файлы для загрузки'
+                                : 'Перетащите или кликните для выбора'}
                         </p>
                         <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1 text-center">
                             JPEG, PNG, PDF, DOC/DOCX, XLS/XLSX до 20 МБ
@@ -335,55 +372,98 @@ const ZeroInjuryDocumentsManager: React.FC<ZeroInjuryDocumentsManagerProps> = ({
                         >
                             <div className="flex items-start gap-3">
                                 <div className="flex-shrink-0 mt-0.5">
-                                    {item.status === 'pending' && <FiFile className="w-5 h-5 text-gray-500" />}
-                                    {item.status === 'uploading' && <FiLoader className="w-5 h-5 text-blue-500 animate-spin" />}
-                                    {item.status === 'success' && <FiCheck className="w-5 h-5 text-green-500" />}
-                                    {item.status === 'error' && <FiAlertTriangle className="w-5 h-5 text-red-500" />}
+                                    {item.status === 'pending' && (
+                                        <FiFile className="w-5 h-5 text-gray-500" />
+                                    )}
+                                    {item.status === 'uploading' && (
+                                        <FiLoader className="w-5 h-5 text-blue-500 animate-spin" />
+                                    )}
+                                    {item.status === 'success' && (
+                                        <FiCheck className="w-5 h-5 text-green-500" />
+                                    )}
+                                    {item.status === 'error' && (
+                                        <FiAlertTriangle className="w-5 h-5 text-red-500" />
+                                    )}
                                 </div>
                                 <div className="flex-1 min-w-0">
                                     <div className="flex items-center justify-between gap-2 flex-wrap">
                                         <span className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">
                                             {item.file.name}
                                         </span>
-                                        <span className="text-xs text-gray-500">{formatFileSize(item.file.size)}</span>
+                                        <span className="text-xs text-gray-500 dark:text-gray-400">
+                                            {formatFileSize(item.file.size)}
+                                        </span>
                                     </div>
                                     {item.status === 'pending' && (
-                                        <>
-                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
-                                                <select
-                                                    value={item.documentType}
-                                                    onChange={(e) => updateDocumentType(item.id, e.target.value)}
-                                                    className="w-full px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 focus:ring-1 focus:ring-green-500"
-                                                >
-                                                    {documentTypeOptions.map((opt) => (
-                                                        <option key={opt.value} value={opt.value}>
-                                                            {opt.label}
-                                                        </option>
-                                                    ))}
-                                                </select>
-                                                <input
-                                                    type="text"
-                                                    value={item.description}
-                                                    onChange={(e) => updateDescription(item.id, e.target.value)}
-                                                    placeholder="Описание (необязательно)"
-                                                    className="w-full px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 focus:ring-1 focus:ring-green-500"
-                                                />
-                                            </div>
-                                        </>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+                                            {/*
+                                              Селект типа документа.
+                                              Особенности стиля:
+                                                • `FIELD_BASE_CLASSES` — общий набор классов для полей ввода,
+                                                  включая `dark:[color-scheme:dark]`, который нужен именно
+                                                  для нативного <select>, чтобы браузер нарисовал стрелку и
+                                                  выпадающий список в тёмной теме.
+                                                • Явные стили для <option> — в некоторых браузерах
+                                                  (Chrome, Edge) их можно стилизовать, и это предотвращает
+                                                  светлые полосы в списке.
+                                            */}
+                                            <select
+                                                value={item.documentType}
+                                                onChange={(e) =>
+                                                    updateDocumentType(
+                                                        item.id,
+                                                        e.target.value
+                                                    )
+                                                }
+                                                className={FIELD_BASE_CLASSES}
+                                            >
+                                                {documentTypeOptions.map((opt) => (
+                                                    <option
+                                                        key={opt.value}
+                                                        value={opt.value}
+                                                        className="bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100"
+                                                    >
+                                                        {opt.label}
+                                                    </option>
+                                                ))}
+                                            </select>
+
+                                            {/*
+                                              Поле описания документа.
+                                              Использует тот же FIELD_BASE_CLASSES, чтобы быть визуально
+                                              согласованным с селектом.
+                                            */}
+                                            <input
+                                                type="text"
+                                                value={item.description}
+                                                onChange={(e) =>
+                                                    updateDescription(
+                                                        item.id,
+                                                        e.target.value
+                                                    )
+                                                }
+                                                placeholder="Описание (необязательно)"
+                                                className={FIELD_BASE_CLASSES}
+                                            />
+                                        </div>
                                     )}
                                     {item.status === 'error' && (
-                                        <div className="text-xs text-red-500 mt-1">{item.error}</div>
+                                        <div className="text-xs text-red-500 mt-1">
+                                            {item.error}
+                                        </div>
                                     )}
                                 </div>
-                                {(item.status === 'pending' || item.status === 'success' || item.status === 'error') && (
-                                    <button
-                                        onClick={() => removeFromQueue(item.id)}
-                                        className="flex-shrink-0 p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700"
-                                        title="Убрать"
-                                    >
-                                        <FiX className="w-4 h-4 text-gray-400" />
-                                    </button>
-                                )}
+                                {(item.status === 'pending' ||
+                                    item.status === 'success' ||
+                                    item.status === 'error') && (
+                                        <button
+                                            onClick={() => removeFromQueue(item.id)}
+                                            className="flex-shrink-0 p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700"
+                                            title="Убрать"
+                                        >
+                                            <FiX className="w-4 h-4 text-gray-400" />
+                                        </button>
+                                    )}
                             </div>
                         </div>
                     ))}
@@ -393,7 +473,8 @@ const ZeroInjuryDocumentsManager: React.FC<ZeroInjuryDocumentsManagerProps> = ({
                             className="w-full py-2 bg-green-500 hover:bg-green-600 text-white rounded-xl transition-colors flex items-center justify-center gap-2 text-sm font-medium"
                         >
                             <FiUpload className="w-4 h-4" />
-                            Загрузить все ({queue.filter((q) => q.status === 'pending').length})
+                            Загрузить все (
+                            {queue.filter((q) => q.status === 'pending').length})
                         </button>
                     )}
                 </div>
@@ -411,9 +492,14 @@ const ZeroInjuryDocumentsManager: React.FC<ZeroInjuryDocumentsManagerProps> = ({
                             key={doc.id}
                             className="group flex items-center gap-3 p-2 bg-gray-50 dark:bg-gray-800/50 rounded-xl border border-gray-100 dark:border-gray-700 hover:shadow-sm transition-all"
                         >
-                            <div className="flex-shrink-0">{getFileIcon(doc.contentType)}</div>
+                            <div className="flex-shrink-0">
+                                {getFileIcon(doc.contentType)}
+                            </div>
                             <div className="flex-1 min-w-0">
-                                <div className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate" title={doc.fileName}>
+                                <div
+                                    className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate"
+                                    title={doc.fileName}
+                                >
                                     {doc.fileName}
                                 </div>
                                 <div className="flex flex-wrap gap-2 text-xs text-gray-500 dark:text-gray-400">
@@ -439,7 +525,9 @@ const ZeroInjuryDocumentsManager: React.FC<ZeroInjuryDocumentsManagerProps> = ({
                                 </button>
                                 {isEditable && (
                                     <button
-                                        onClick={() => handleDelete(doc.id, doc.fileName)}
+                                        onClick={() =>
+                                            handleDelete(doc.id, doc.fileName)
+                                        }
                                         className="p-1.5 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30"
                                         title="Удалить"
                                     >
