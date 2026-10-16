@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
 using Safety.Injuries.API.Auth;
+using Safety.Injuries.API.BackgroundServices;
 using Safety.Injuries.API.Middleware;
 using Safety.Injuries.API.Services;
 using Safety.Injuries.Application;
@@ -103,6 +104,9 @@ builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddSingleton<IOrganizationNameDecryptor, OrganizationNameDecryptor>();
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, DynamicAuthorizationPolicyProvider>();
+
+// ========== РЕГИСТРАЦИЯ ФОНОВЫХ СЕРВИСОВ ==========
+builder.Services.AddHostedService<ZeroInjuryRecalculationBackgroundService>();
 
 builder.Services.AddSignalR(options =>
 {

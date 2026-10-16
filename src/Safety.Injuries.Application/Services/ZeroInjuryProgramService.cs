@@ -56,9 +56,6 @@ public class ZeroInjuryProgramService : IZeroInjuryProgramService
     /// <inheritdoc />
     public async Task<ZeroInjuryStatusDto> GetStatusAsync()
     {
-        // Полный пересчёт статусов всех программ по актуальным данным о травмах.
-        // Это гарантирует, что UI увидит корректный статус: активна / завершена успешно / прервана.
-        await RecalculateAsync();
 
         var current = await _repository.GetCurrentAsync();
 
@@ -130,8 +127,6 @@ public class ZeroInjuryProgramService : IZeroInjuryProgramService
     /// <inheritdoc />
     public async Task<IEnumerable<ZeroInjuryProgramDto>> GetHistoryAsync()
     {
-        // Полный пересчёт перед выдачей истории — чтобы статусы были актуальными.
-        await RecalculateAsync();
 
         var programs = await _repository.GetHistoryAsync();
         return _mapper.Map<IEnumerable<ZeroInjuryProgramDto>>(programs);
@@ -214,6 +209,9 @@ public class ZeroInjuryProgramService : IZeroInjuryProgramService
         };
 
         var created = await _repository.AddAsync(program);
+
+        await RecalculateAsync();
+
         return _mapper.Map<ZeroInjuryProgramDto>(created);
     }
 
@@ -296,6 +294,9 @@ public class ZeroInjuryProgramService : IZeroInjuryProgramService
         program.UpdatedAt = DateTime.UtcNow;
 
         var updated = await _repository.UpdateAsync(program);
+
+        await RecalculateAsync();
+
         return _mapper.Map<ZeroInjuryProgramDto>(updated);
     }
 
@@ -307,6 +308,8 @@ public class ZeroInjuryProgramService : IZeroInjuryProgramService
             throw new KeyNotFoundException($"Программа «Ноль травм» с id {id} не найдена");
 
         await _repository.DeleteAsync(program);
+
+        await RecalculateAsync();
     }
 
     /// <inheritdoc />
