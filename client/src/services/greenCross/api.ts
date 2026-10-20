@@ -115,15 +115,25 @@ export const safetyService = {
     },
 
     /**
-     * Загрузить новый файл для травмы
+     * Загрузить новый файл для травмы.
+     *
+     * onProgress — необязательный колбэк, вызывается по мере отправки байт
+     * (через axios `onUploadProgress`). Получает процент от 0 до 100.
+     *
+     * Если браузер/сервер не сообщают `total` (редко, обычно при chunked
+     * encoding без Content-Length), колбэк не вызывается — вызывающая
+     * сторона может показывать неопределённый прогресс («Загрузка...»).
+     *
      * @param injuryId - идентификатор травмы
      * @param file - файл для загрузки
      * @param description - описание файла (необязательно)
+     * @param onProgress - колбэк прогресса (необязательно)
      */
     async uploadFile(
         injuryId: string,
         file: File,
-        description?: string
+        description?: string,
+        onProgress?: (percent: number) => void
     ): Promise<InjuryFileDto> {
         const formData = new FormData();
         formData.append('file', file);
@@ -138,6 +148,22 @@ export const safetyService = {
             {
                 headers: {
                     'Content-Type': 'multipart/form-data',
+                },
+                onUploadProgress: (event) => {
+                    if (!onProgress) return;
+
+                    // axios 1.x предоставляет event.progress (0..1),
+                    // но только если известен total. Если progress есть —
+                    // используем его, иначе считаем по loaded/total.
+                    if (typeof event.progress === 'number') {
+                        onProgress(Math.round(event.progress * 100));
+                        return;
+                    }
+
+                    if (typeof event.total === 'number' && event.total > 0) {
+                        const percent = Math.round((event.loaded / event.total) * 100);
+                        onProgress(Math.min(100, percent));
+                    }
                 },
             }
         );
@@ -226,6 +252,146 @@ export const safetyService = {
     }> {
         const response = await apiClient.get('/version');
         return response.data;
+    },
+    /**
+ * Получить статус программы «Ноль травм»: активная программа, последняя значимая травма,
+ * минимально допустимая дата начала новой программы.
+ */
+    async getZeroInjuryStatus(): Promise<import('../../types/greenCross').ZeroInjuryStatusDto> {
+        const response = await apiClient.get('/zero-injury/status');
+        return response.data;
+    },
+
+    /**
+     * Получить историю программ «Ноль травм» (от новых к старым).
+     */
+    async getZeroInjuryHistory(): Promise<import('../../types/greenCross').ZeroInjuryProgramDto[]> {
+        const response = await apiClient.get('/zero-injury/history');
+        return response.data;
+    },
+
+    /**
+     * Получить одну программу по идентификатору.
+     * @param id - идентификатор программы
+     */
+    async getZeroInjuryProgramById(id: string): Promise<import('../../types/greenCross').ZeroInjuryProgramDto> {
+        const response = await apiClient.get(`/zero-injury/${id}`);
+        return response.data;
+    },
+
+    /**
+     * Создать новую программу «Ноль травм».
+     * @param data - параметры новой программы
+     */
+    async createZeroInjuryProgram(
+        data: import('../../types/greenCross').CreateZeroInjuryProgramRequest
+    ): Promise<import('../../types/greenCross').ZeroInjuryProgramDto> {
+        const response = await apiClient.post('/zero-injury', data);
+        return response.data;
+    },
+
+    /**
+     * Обновить существующую активную программу.
+     * @param id - идентификатор программы
+     * @param data - новые значения полей
+     */
+    async updateZeroInjuryProgram(
+        id: string,
+        data: import('../../types/greenCross').UpdateZeroInjuryProgramRequest
+    ): Promise<import('../../types/greenCross').ZeroInjuryProgramDto> {
+        const response = await apiClient.put(`/zero-injury/${id}`, data);
+        return response.data;
+    },
+
+    /**
+     * Удалить программу «Ноль травм» вместе с документами.
+     * @param id - идентификатор программы
+     */
+    async deleteZeroInjuryProgram(id: string): Promise<void> {
+        await apiClient.delete(`/zero-injury/${id}`);
+    },
+
+    /**
+     * Получить список документов программы.
+     * @param programId - идентификатор программы
+     */
+    async getZeroInjuryDocuments(
+        programId: string
+    ): Promise<import('../../types/greenCross').ZeroInjuryDocumentDto[]> {
+        const response = await apiClient.get(`/zero-injury/${programId}/documents`);
+        return response.data;
+    },
+
+    /**
+     * Загрузить документ в программу.
+     *
+     * onProgress — необязательный колбэк, вызывается по мере отправки байт
+     * (через axios `onUploadProgress`). Получает процент от 0 до 100.
+     * Используется в режиме создания программы, чтобы показать реальный
+     * прогресс каждого документа, а также может использоваться в edit-mode.
+     *
+     * @param programId - идентификатор программы
+     * @param file - файл
+     * @param documentType - тип документа (Order, Act, Report, Other)
+     * @param description - описание (необязательно)
+     * @param onProgress - колбэк прогресса (необязательно)
+     */
+    async uploadZeroInjuryDocument(
+        programId: string,
+        file: File,
+        documentType: string,
+        description?: string,
+        onProgress?: (percent: number) => void
+    ): Promise<import('../../types/greenCross').ZeroInjuryDocumentDto> {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('documentType', documentType);
+        if (description) {
+            formData.append('description', description);
+        }
+
+        const response = await apiClient.post(
+            `/zero-injury/${programId}/documents`,
+            formData,
+            {
+                headers: { 'Content-Type': 'multipart/form-data' },
+                onUploadProgress: (event) => {
+                    if (!onProgress) return;
+
+                    // axios 1.x предоставляет event.progress (0..1),
+                    // но только если известен total. Если progress есть —
+                    // используем его, иначе считаем по loaded/total.
+                    if (typeof event.progress === 'number') {
+                        onProgress(Math.round(event.progress * 100));
+                        return;
+                    }
+
+                    if (typeof event.total === 'number' && event.total > 0) {
+                        const percent = Math.round((event.loaded / event.total) * 100);
+                        onProgress(Math.min(100, percent));
+                    }
+                },
+            }
+        );
+        return response.data;
+    },
+
+    /**
+     * Скачать документ программы.
+     */
+    async downloadZeroInjuryDocument(programId: string, documentId: string): Promise<Blob> {
+        const response = await apiClient.get(
+            `/zero-injury/${programId}/documents/${documentId}`,
+            { responseType: 'blob' }
+        );
+        return response.data;
+    },
+
+    /**
+     * Удалить документ программы.
+     */
+    async deleteZeroInjuryDocument(programId: string, documentId: string): Promise<void> {
+        await apiClient.delete(`/zero-injury/${programId}/documents/${documentId}`);
     },
 };
 

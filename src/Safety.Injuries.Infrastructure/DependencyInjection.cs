@@ -27,6 +27,8 @@ public static class DependencyInjection
         // Регистрация репозиториев с жизненным циклом Scoped
         services.AddScoped<IInjuryRepository, InjuryRepository>();
         services.AddScoped<IInjuryFileRepository, InjuryFileRepository>();
+        // Репозиторий программы «Ноль травм» и связанных документов
+        services.AddScoped<IZeroInjuryProgramRepository, ZeroInjuryProgramRepository>();
 
         return services;
     }

@@ -2,6 +2,11 @@
  * Компонент "Зелёный крест" – сетка 7x7, в которой активны только клетки, образующие крест.
  * Каждая клетка соответствует дню месяца (максимум 31 день, распределённые по кресту).
  * Цвет ячейки зависит от наличия травмы и её категории.
+ *
+ * Дополнительно поддерживаются два необязательных слота — bottomLeftSlot и
+ * bottomRightSlot. Они размещаются через ту же CSS-сетку, что и клетки:
+ * занимают 2x2 пустые ячейки в нижних углах креста. Такой подход даёт
+ * точное совпадение границ с ячейками и исключает «наезд» на соседние дни.
  */
 import React, { useMemo } from 'react';
 import { getDaysInMonth, setDate, isFuture, isToday } from 'date-fns';
@@ -12,12 +17,18 @@ interface CrossCalendarProps {
     currentDate: Date;
     injuriesMonth: InjuryDto[];
     onDayClick: (date: Date) => void;
+    /** Необязательный контент в пустом нижнем левом углу креста (2x2 клетки). */
+    bottomLeftSlot?: React.ReactNode;
+    /** Необязательный контент в пустом нижнем правом углу креста (2x2 клетки). */
+    bottomRightSlot?: React.ReactNode;
 }
 
 const CrossCalendar: React.FC<CrossCalendarProps> = ({
     currentDate,
     injuriesMonth,
     onDayClick,
+    bottomLeftSlot,
+    bottomRightSlot,
 }) => {
     // Количество дней в текущем месяце
     const monthDays = useMemo(() => {
@@ -77,7 +88,9 @@ const CrossCalendar: React.FC<CrossCalendarProps> = ({
         if (cell) onDayClick(cell.date);
     };
 
-    // Строим сетку 7x7
+    // Строим сетку 7x7.
+    // Каждая ячейка явно позиционируется через gridRow/gridColumn, чтобы
+    // слоты можно было накладывать на те же 2x2 угловые ячейки.
     return (
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-4 md:p-6">
             <div className="grid grid-cols-7 gap-2 md:gap-3">
@@ -85,8 +98,26 @@ const CrossCalendar: React.FC<CrossCalendarProps> = ({
                     Array.from({ length: 7 }, (_, col) => {
                         const key = `${row}-${col}`;
                         const cell = cellContent[key];
-                        const isCross = crossCells.some((c) => c.row === row && c.col === col);
-                        if (!isCross) return <div key={key} className="aspect-square" />;
+                        const isCross = crossCells.some(
+                            (c) => c.row === row && c.col === col
+                        );
+
+                        // Общие стили grid-позиции для этой ячейки — используются
+                        // как для пустых ячеек, так и для кнопок с днями.
+                        const gridStyle: React.CSSProperties = {
+                            gridRow: `${row + 1} / span 1`,
+                            gridColumn: `${col + 1} / span 1`,
+                        };
+
+                        if (!isCross) {
+                            return (
+                                <div
+                                    key={key}
+                                    style={gridStyle}
+                                    className="aspect-square"
+                                />
+                            );
+                        }
 
                         const dayNumber = cell?.day;
                         const cellDate = cell?.date;
@@ -101,22 +132,25 @@ const CrossCalendar: React.FC<CrossCalendarProps> = ({
                             } else if (injury) {
                                 bgColor = getCategoryColorClass(injury.category, true);
                             } else {
-                                bgColor = 'bg-gradient-to-br from-green-400 to-emerald-600 dark:from-green-600 dark:to-emerald-800 shadow-md shadow-green-200/50 dark:shadow-green-900/30';
+                                bgColor =
+                                    'bg-gradient-to-br from-green-400 to-emerald-600 dark:from-green-600 dark:to-emerald-800 shadow-md shadow-green-200/50 dark:shadow-green-900/30';
                             }
                         }
 
-                        const todayClass = isTodayDate && dayNumber
-                            ? 'ring-2 ring-blue-500 ring-offset-2 dark:ring-offset-gray-800'
-                            : '';
+                        const todayClass =
+                            isTodayDate && dayNumber
+                                ? 'ring-2 ring-blue-500 ring-offset-2 dark:ring-offset-gray-800'
+                                : '';
 
                         const isClickable = !!(dayNumber && !isFutureDate);
 
                         return (
                             <button
                                 key={key}
+                                style={gridStyle}
                                 className={`aspect-square flex items-center justify-center rounded-xl transition-all duration-200 ${bgColor} ${todayClass} ${isClickable
-                                    ? 'cursor-pointer hover:scale-105 hover:shadow-lg active:scale-95'
-                                    : 'cursor-not-allowed opacity-70'
+                                        ? 'cursor-pointer hover:scale-105 hover:shadow-lg active:scale-95'
+                                        : 'cursor-not-allowed opacity-70'
                                     }`}
                                 onClick={() => isClickable && handleCellClick(row, col)}
                                 title={
@@ -128,10 +162,49 @@ const CrossCalendar: React.FC<CrossCalendarProps> = ({
                                 }
                                 disabled={!isClickable}
                             >
-                                {dayNumber && <span className="text-base md:text-lg font-bold text-white drop-shadow-md">{dayNumber}</span>}
+                                {dayNumber && (
+                                    <span className="text-base md:text-lg font-bold text-white drop-shadow-md">
+                                        {dayNumber}
+                                    </span>
+                                )}
                             </button>
                         );
                     })
+                )}
+
+                {/*
+                  Слоты в пустых нижних углах креста.
+                  Занимают по 2 строки x 2 столбца и ровно совпадают
+                  с 2x2 пустыми ячейками сетки. Внешняя обёртка —
+                  pointer-events-none, чтобы клики проходили сквозь пустоту,
+                  внутренний контейнер с бейджем — pointer-events-auto.
+                */}
+                {bottomLeftSlot && (
+                    <div
+                        style={{
+                            gridRow: '6 / span 2',
+                            gridColumn: '1 / span 2',
+                        }}
+                        className="flex items-end justify-start pointer-events-none"
+                    >
+                        <div className="pointer-events-auto w-full">
+                            {bottomLeftSlot}
+                        </div>
+                    </div>
+                )}
+
+                {bottomRightSlot && (
+                    <div
+                        style={{
+                            gridRow: '6 / span 2',
+                            gridColumn: '6 / span 2',
+                        }}
+                        className="flex items-end justify-end pointer-events-none"
+                    >
+                        <div className="pointer-events-auto">
+                            {bottomRightSlot}
+                        </div>
+                    </div>
                 )}
             </div>
         </div>

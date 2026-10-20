@@ -13,6 +13,9 @@ export * from './forms';
 export * from './files';
 export * from './modals';
 
+// Модуль «Ноль травм»
+export * from './ZeroInjuryPanel';
+
 // Реэкспорт MonthView для обратной совместимости: раньше он экспортировался
 // из barrel как именованный экспорт (`export { default as MonthView }`),
 // теперь живёт внутри YearCalendarView, но также доступен через barrel

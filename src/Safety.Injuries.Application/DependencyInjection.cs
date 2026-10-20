@@ -25,6 +25,8 @@ public static class DependencyInjection
         // Регистрация бизнес-сервисов (Scoped)
         services.AddScoped<IInjuryService, InjuryService>();
         services.AddScoped<IInjuryFileService, InjuryFileService>();
+        // Сервис программы «Ноль травм»
+        services.AddScoped<IZeroInjuryProgramService, ZeroInjuryProgramService>();
 
         return services;
     }
