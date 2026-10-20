@@ -151,7 +151,7 @@ const GreenCross: React.FC = () => {
     const loading = injuriesLoading || statisticsLoading;
 
     return (
-        <div>
+        <div className="w-full">
             {/* Заголовок и навигация: на десктопе в строку, на мобильных колонкой, но всё по левому краю */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6 gap-4">
                 {/* Левая часть: заголовок + название организации */}
@@ -230,7 +230,7 @@ const GreenCross: React.FC = () => {
             {/* Две колонки: статистика/легенда + календарь */}
             <div className="flex flex-col lg:flex-row gap-6">
                 {/* Левая колонка — только информационные панели и легенда. */}
-                <div className="lg:w-80 space-y-5">
+                <div className="lg:w-80 space-y-5 shrink-0">
                     <ZeroInjuryPanel
                         status={zeroInjuryStatus}
                         history={zeroInjuryHistory}
@@ -247,8 +247,9 @@ const GreenCross: React.FC = () => {
 
                 {/* Правая колонка – календарь.
                     Бейджи роли и версии передаются прямо в CrossCalendar,
-                    который рендерит их в пустых нижних углах креста. */}
-                <div className="flex-1">
+                    который рендерит их в пустых нижних углах креста.
+                    Класс min-w-0 предотвращает вылезание календаря за пределы экрана. */}
+                <div className="flex-1 min-w-0">
                     {loading && (
                         <div className="flex justify-center items-center py-12">
                             <div className="animate-spin rounded-full h-12 w-12 border-4 border-green-500 border-t-transparent" />
