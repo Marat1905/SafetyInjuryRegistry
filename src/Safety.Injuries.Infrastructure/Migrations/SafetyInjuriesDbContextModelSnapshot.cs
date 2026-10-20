@@ -44,6 +44,12 @@ namespace Safety.Injuries.Infrastructure.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
 
+                    b.Property<uint>("RowVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
                     b.Property<string>("Type")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -53,6 +59,10 @@ namespace Safety.Injuries.Infrastructure.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("Category");
+
+                    b.HasIndex("Date");
 
                     b.ToTable("Injuries", (string)null);
                 });
@@ -100,6 +110,123 @@ namespace Safety.Injuries.Infrastructure.Migrations
                     b.ToTable("InjuryFiles", (string)null);
                 });
 
+            modelBuilder.Entity("Safety.Injuries.Domain.Entities.ZeroInjuryDocument", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<byte[]>("Data")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("DocumentType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<Guid>("ProgramId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("Size")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProgramId");
+
+                    b.ToTable("ZeroInjuryDocuments", (string)null);
+                });
+
+            modelBuilder.Entity("Safety.Injuries.Domain.Entities.ZeroInjuryProgram", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<DateTime?>("FinalizedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("InterruptingInjuryId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("IsFinalized")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
+                    b.Property<bool>("IsSuccessfullyCompleted")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
+                    b.Property<uint>("RowVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.Property<string>("SetByUserId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("SetByUserName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTime>("StartDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("TargetDaysInternal")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid?>("TriggeringInjuryId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IsFinalized");
+
+                    b.HasIndex("StartDate");
+
+                    b.HasIndex("TriggeringInjuryId");
+
+                    b.ToTable("ZeroInjuryPrograms", (string)null);
+                });
+
             modelBuilder.Entity("Safety.Injuries.Domain.Entities.InjuryFile", b =>
                 {
                     b.HasOne("Safety.Injuries.Domain.Entities.Injury", "Injury")
@@ -111,9 +238,35 @@ namespace Safety.Injuries.Infrastructure.Migrations
                     b.Navigation("Injury");
                 });
 
+            modelBuilder.Entity("Safety.Injuries.Domain.Entities.ZeroInjuryDocument", b =>
+                {
+                    b.HasOne("Safety.Injuries.Domain.Entities.ZeroInjuryProgram", "Program")
+                        .WithMany("Documents")
+                        .HasForeignKey("ProgramId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Program");
+                });
+
+            modelBuilder.Entity("Safety.Injuries.Domain.Entities.ZeroInjuryProgram", b =>
+                {
+                    b.HasOne("Safety.Injuries.Domain.Entities.Injury", "TriggeringInjury")
+                        .WithMany()
+                        .HasForeignKey("TriggeringInjuryId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("TriggeringInjury");
+                });
+
             modelBuilder.Entity("Safety.Injuries.Domain.Entities.Injury", b =>
                 {
                     b.Navigation("Files");
+                });
+
+            modelBuilder.Entity("Safety.Injuries.Domain.Entities.ZeroInjuryProgram", b =>
+                {
+                    b.Navigation("Documents");
                 });
 #pragma warning restore 612, 618
         }
