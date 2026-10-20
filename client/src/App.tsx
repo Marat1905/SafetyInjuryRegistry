@@ -7,11 +7,13 @@
  * Также оборачивает приложение в AuthProvider (тестовый).
  */
 import { useState, useEffect } from 'react';
+import { BrowserRouter, Routes, Route } from 'react-router';
 import { Toaster } from 'react-hot-toast';
 import { FiSun, FiMoon, FiUser, FiShield, FiUserCheck } from 'react-icons/fi';
 import GreenCross from './pages/GreenCross/GreenCrossPage';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import './index.css';
+import Layout from './components/Layout';
 
 /** Иконка для текущей тестовой роли */
 const RoleIcon: React.FC<{ role: string }> = ({ role }) => {
@@ -65,7 +67,7 @@ const AppInner: React.FC = () => {
                 : 'text-gray-700 dark:text-gray-200';
 
     return (
-        <>
+        <BrowserRouter>
             {/* Глобальный контейнер для уведомлений (тостов) */}
             <Toaster
                 position="top-right"
@@ -107,9 +109,12 @@ const AppInner: React.FC = () => {
                 </button>
             </div>
 
-            {/* Основное приложение */}
-            <GreenCross />
-        </>
+            <Layout>
+                <Routes>
+                    <Route path="/green-cross" element={<GreenCross />} />
+                </Routes>
+            </Layout>
+        </BrowserRouter>
     );
 };
 
