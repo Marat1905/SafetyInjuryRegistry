@@ -2,8 +2,50 @@
  * Компонент для управления документами программы «Ноль травм»:
  * загрузка, скачивание, удаление.
  * Работает по аналогии с InjuryFilesManager, но с учётом типа документа.
+ *
+ * Поддерживает РЕАЛЬНЫЙ прогресс загрузки (через axios onUploadProgress
+ * в safetyService.uploadZeroInjuryDocument). Пока документ отправляется,
+ * в очереди показывается полоса прогресса и процент. Это устраняет
+ * «слепую зону», когда пользователь видел только спиннер и не понимал,
+ * сколько ещё ждать (особенно для DOCX/XLSX до 20 МБ).
+ *
+ * Компонент обёрнут в forwardRef и предоставляет наружу императивный
+ * метод uploadPending(). Это нужно, чтобы родитель (ZeroInjuryModal) мог
+ * инициировать загрузку отложенных документов прямо из обработчика кнопки
+ * «Сохранить изменения» — без отдельной кнопки «Загрузить все». Ровно так
+ * же это сделано для InjuryFilesManager в режиме редактирования травмы.
+ *
+ * uploadPending() возвращает UploadZeroInjuryPendingResult с количеством
+ * запланированных и неудавшихся загрузок. Это позволяет родителю
+ * показать честное сообщение: «программа обновлена и документы загружены»,
+ * «программа обновлена, но часть документов не загрузилась» или
+ * «программа обновлена без документов». Простое проглатывание ошибок
+ * внутри uploadAll не даёт отличить эти сценарии, а try/catch
+ * вокруг uploadPending не сработал бы: uploadAll не бросает
+ * исключения, а обрабатывает ошибки пофайлово (частичный успех —
+ * нормальный сценарий).
+ *
+ * Автоскролл: при старте uploadAll() контейнер очереди прокручивается
+ * в зону видимости. Без этого пользователь мог нажать «Сохранить изменения»
+ * и не увидеть полосы прогресса, потому что очередь находится ниже
+ * полей формы и уходит за границу прокрутки модалки.
+ *
+ * ВАЖНО про type="button".
+ *
+ * Компонент рендерится внутри модалки, которая в свою очередь находится
+ * внутри <form> (форма создания/редактирования программы). Все кнопки
+ * здесь помечены type="button", чтобы клик по ним не вызывал submit
+ * формы и не приводил к преждевременному закрытию модалки или
+ * сохранению программы.
  */
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, {
+    useCallback,
+    useEffect,
+    useRef,
+    useState,
+    forwardRef,
+    useImperativeHandle,
+} from 'react';
 import {
     FiDownload,
     FiTrash2,
@@ -76,13 +118,58 @@ interface UploadingDoc {
     description: string;
     documentType: string;
     status: 'pending' | 'uploading' | 'success' | 'error';
+    /** Процент загрузки (0-100). Обновляется через axios onUploadProgress. */
+    progress: number;
     error?: string;
     uploaded?: ZeroInjuryDocumentDto;
+}
+
+/**
+ * Результат загрузки отложенных документов.
+ *
+ * total  — сколько документов было в очереди со статусом 'pending' на момент вызова.
+ * failed — сколько из них не удалось загрузить (сервер вернул ошибку).
+ *
+ * Если total === 0, значит, загружать было нечего (пользователь не добавлял
+ * документов или все они уже загружены в предыдущих итерациях).
+ */
+export interface UploadZeroInjuryPendingResult {
+    total: number;
+    failed: number;
+}
+
+/**
+ * Императивный интерфейс компонента.
+ *
+ * Позволяет родителю (ZeroInjuryModal) запустить загрузку всех документов,
+ * находящихся в очереди со статусом 'pending', в момент сохранения программы.
+ * Ошибки загрузки отдельных документов показываются через toast внутри
+ * uploadAll и не пробрасываются наружу — промис всегда резолвится,
+ * чтобы не ломать сценарий сохранения. Информация о неудачах приходит
+ * через UploadZeroInjuryPendingResult.
+ */
+export interface ZeroInjuryDocumentsManagerHandle {
+    /**
+     * Загрузить все документы, находящиеся в очереди со статусом 'pending'.
+     * Если очередь пуста — возвращает { total: 0, failed: 0 }.
+     * Промис резолвится, когда все загрузки завершены (успешно или с ошибкой).
+     */
+    uploadPending: () => Promise<UploadZeroInjuryPendingResult>;
 }
 
 interface ZeroInjuryDocumentsManagerProps {
     programId: string;
     isEditable: boolean;
+    /**
+     * Скрыть кнопку «Загрузить все».
+     *
+     * Используется в режиме редактирования программы: там загрузка документов
+     * выполняется автоматически при нажатии «Сохранить изменения» (см.
+     * ZeroInjuryModal.handleUpdate). Вместо кнопки показывается подсказка
+     * «Документы будут загружены при сохранении программы». Ровно так же
+     * ведёт себя InjuryFilesManager в режиме редактирования травмы.
+     */
+    hideUploadAllButton?: boolean;
 }
 
 // ----------------------------------------------------------------------
@@ -111,15 +198,36 @@ const FIELD_BASE_CLASSES =
 // ----------------------------------------------------------------------
 // Компонент
 // ----------------------------------------------------------------------
-const ZeroInjuryDocumentsManager: React.FC<ZeroInjuryDocumentsManagerProps> = ({
-    programId,
-    isEditable,
-}) => {
+const ZeroInjuryDocumentsManager = forwardRef<
+    ZeroInjuryDocumentsManagerHandle,
+    ZeroInjuryDocumentsManagerProps
+>(({ programId, isEditable, hideUploadAllButton = false }, ref) => {
     const [documents, setDocuments] = useState<ZeroInjuryDocumentDto[]>([]);
     const [loading, setLoading] = useState(false);
     const [queue, setQueue] = useState<UploadingDoc[]>([]);
     const [isDragging, setIsDragging] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    // Ref на контейнер очереди. Нужен для автоскролла: когда пользователь
+    // нажимает «Сохранить изменения», очередь загрузки может быть ниже
+    // видимой области модалки (она в overflow-y-auto). Скроллим её в зону
+    // видимости, чтобы полосы прогресса были видны.
+    const queueContainerRef = useRef<HTMLDivElement>(null);
+
+    // Таймер очистки завершённых элементов очереди. Храним ссылку,
+    // чтобы погасить его при размонтировании компонента: при сохранении
+    // модалка закрывается сразу после загрузки документов, и без clearTimeout
+    // таймер сработал бы уже на размонтированном компоненте.
+    const clearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    useEffect(() => {
+        return () => {
+            if (clearTimerRef.current) {
+                clearTimeout(clearTimerRef.current);
+                clearTimerRef.current = null;
+            }
+        };
+    }, []);
 
     // ------------------------------------------------------------------
     // Загрузка списка документов
@@ -175,6 +283,7 @@ const ZeroInjuryDocumentsManager: React.FC<ZeroInjuryDocumentsManagerProps> = ({
                 description: '',
                 documentType: 'Other',
                 status: 'pending',
+                progress: 0,
             });
         }
         if (newItems.length) {
@@ -230,16 +339,43 @@ const ZeroInjuryDocumentsManager: React.FC<ZeroInjuryDocumentsManagerProps> = ({
         );
     };
 
-    // Загрузка всех документов из очереди
-    const uploadAll = async () => {
+    // Загрузка всех документов из очереди с РЕАЛЬНЫМ прогрессом.
+    //
+    // Возвращает UploadZeroInjuryPendingResult, чтобы вызывающая сторона
+    // могла отличить три исхода:
+    //   • total === 0            — загружать было нечего;
+    //   • total > 0, failed === 0 — всё загружено;
+    //   • total > 0, failed > 0   — часть документов не загрузилась.
+    //
+    // Ошибки по отдельным документам не пробрасываются наружу: это
+    // осознанное решение, потому что один упавший документ не должен
+    // отменять успешную загрузку остальных и не должен ломать
+    // сценарий сохранения программы в ZeroInjuryModal.
+    //
+    // Перед стартом очередь прокручивается в зону видимости: если
+    // пользователь нажал «Сохранить изменения» наверху формы, без скролла
+    // он не увидит полосы прогресса.
+    const uploadAll = async (): Promise<UploadZeroInjuryPendingResult> => {
         const pending = queue.filter((item) => item.status === 'pending');
-        if (pending.length === 0) return;
+        if (pending.length === 0) {
+            return { total: 0, failed: 0 };
+        }
+
+        // Прокручиваем очередь в зону видимости, чтобы пользователь
+        // увидел прогресс-бары. behavior: 'smooth' — плавно, block: 'nearest' —
+        // только если элемент вне видимой области (не дёргаем страницу зря).
+        queueContainerRef.current?.scrollIntoView({
+            behavior: 'smooth',
+            block: 'nearest',
+        });
 
         setQueue((prev) =>
             prev.map((item) =>
-                item.status === 'pending' ? { ...item, status: 'uploading' } : item
+                item.status === 'pending' ? { ...item, status: 'uploading', progress: 0 } : item
             )
         );
+
+        let failed = 0;
 
         for (const item of pending) {
             try {
@@ -247,16 +383,26 @@ const ZeroInjuryDocumentsManager: React.FC<ZeroInjuryDocumentsManagerProps> = ({
                     programId,
                     item.file,
                     item.documentType,
-                    item.description.trim() || undefined
+                    item.description.trim() || undefined,
+                    (percent) => {
+                        setQueue((prev) =>
+                            prev.map((q) =>
+                                q.id === item.id ? { ...q, progress: percent } : q
+                            )
+                        );
+                    }
                 );
                 setQueue((prev) =>
                     prev.map((q) =>
-                        q.id === item.id ? { ...q, status: 'success', uploaded } : q
+                        q.id === item.id
+                            ? { ...q, status: 'success', progress: 100, uploaded }
+                            : q
                     )
                 );
                 setDocuments((prev) => [...prev, uploaded]);
                 toast.success(`Документ "${item.file.name}" загружен`);
             } catch (err) {
+                failed++;
                 console.error('Ошибка загрузки документа:', err);
                 setQueue((prev) =>
                     prev.map((q) =>
@@ -270,10 +416,38 @@ const ZeroInjuryDocumentsManager: React.FC<ZeroInjuryDocumentsManagerProps> = ({
         }
 
         // Через 3 секунды убираем успешные и ошибочные из очереди.
-        setTimeout(() => {
+        // Таймер сохраняем в ref, чтобы погасить его при размонтировании
+        // (модалка закрывается сразу после сохранения).
+        if (clearTimerRef.current) {
+            clearTimeout(clearTimerRef.current);
+        }
+        clearTimerRef.current = setTimeout(() => {
             setQueue((prev) => prev.filter((item) => item.status === 'pending'));
         }, 3000);
+
+        return { total: pending.length, failed };
     };
+
+    // ------------------------------------------------------------------
+    // Императивный API для родителя (ZeroInjuryModal).
+    //
+    // Позволяет инициировать загрузку отложенных документов из обработчика
+    // кнопки «Сохранить изменения» — без отдельной кнопки «Загрузить все».
+    // Именно так работает режим редактирования программы: пользователь
+    // выбирает документы, заполняет описание/тип и нажимает «Сохранить
+    // изменения» — программа обновляется, а документы загружаются в рамках
+    // той же операции.
+    //
+    // Возвращаемый UploadZeroInjuryPendingResult даёт родителю возможность
+    // показать честное сообщение о результате загрузки.
+    // ------------------------------------------------------------------
+    useImperativeHandle(
+        ref,
+        () => ({
+            uploadPending: uploadAll,
+        }),
+        [uploadAll]
+    );
 
     // ------------------------------------------------------------------
     // Работа с существующими документами
@@ -333,8 +507,8 @@ const ZeroInjuryDocumentsManager: React.FC<ZeroInjuryDocumentsManagerProps> = ({
                     onDrop={handleDrop}
                     onClick={() => fileInputRef.current?.click()}
                     className={`relative rounded-xl border-2 border-dashed transition-all cursor-pointer ${isDragging
-                            ? 'border-green-500 bg-green-50 dark:bg-green-900/20'
-                            : 'border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/30 hover:bg-gray-100 dark:hover:bg-gray-800/50'
+                        ? 'border-green-500 bg-green-50 dark:bg-green-900/20'
+                        : 'border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/30 hover:bg-gray-100 dark:hover:bg-gray-800/50'
                         }`}
                 >
                     <input
@@ -362,9 +536,10 @@ const ZeroInjuryDocumentsManager: React.FC<ZeroInjuryDocumentsManagerProps> = ({
                 </div>
             )}
 
-            {/* Очередь загрузки */}
+            {/* Очередь загрузки. Реф на этот блок используется для автоскролла
+                в зону видимости при старте uploadAll(). */}
             {queue.length > 0 && (
-                <div className="space-y-2">
+                <div ref={queueContainerRef} className="space-y-2">
                     {queue.map((item) => (
                         <div
                             key={item.id}
@@ -447,9 +622,27 @@ const ZeroInjuryDocumentsManager: React.FC<ZeroInjuryDocumentsManagerProps> = ({
                                             />
                                         </div>
                                     )}
+                                    {item.status === 'uploading' && (
+                                        <div className="mt-2">
+                                            <div className="h-1.5 w-full bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                                                <div
+                                                    className="h-full bg-green-500 transition-all duration-150"
+                                                    style={{ width: `${item.progress}%` }}
+                                                />
+                                            </div>
+                                            <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                                Загрузка... {item.progress}%
+                                            </div>
+                                        </div>
+                                    )}
                                     {item.status === 'error' && (
                                         <div className="text-xs text-red-500 mt-1">
                                             {item.error}
+                                        </div>
+                                    )}
+                                    {item.status === 'success' && item.uploaded && (
+                                        <div className="text-xs text-green-600 dark:text-green-400 mt-1">
+                                            ✓ Загружено: {item.uploaded.fileName}
                                         </div>
                                     )}
                                 </div>
@@ -457,6 +650,7 @@ const ZeroInjuryDocumentsManager: React.FC<ZeroInjuryDocumentsManagerProps> = ({
                                     item.status === 'success' ||
                                     item.status === 'error') && (
                                         <button
+                                            type="button"
                                             onClick={() => removeFromQueue(item.id)}
                                             className="flex-shrink-0 p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700"
                                             title="Убрать"
@@ -468,14 +662,27 @@ const ZeroInjuryDocumentsManager: React.FC<ZeroInjuryDocumentsManagerProps> = ({
                         </div>
                     ))}
                     {queue.some((q) => q.status === 'pending') && (
-                        <button
-                            onClick={uploadAll}
-                            className="w-full py-2 bg-green-500 hover:bg-green-600 text-white rounded-xl transition-colors flex items-center justify-center gap-2 text-sm font-medium"
-                        >
-                            <FiUpload className="w-4 h-4" />
-                            Загрузить все (
-                            {queue.filter((q) => q.status === 'pending').length})
-                        </button>
+                        hideUploadAllButton ? (
+                            <div className="w-full py-2 text-center text-xs text-gray-500 dark:text-gray-400">
+                                Документы будут загружены при сохранении программы
+                            </div>
+                        ) : (
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    // Возвращаемое значение здесь не используется:
+                                    // кнопка «Загрузить все» — самостоятельное действие,
+                                    // и результат загрузки уже показывается тостами
+                                    // внутри uploadAll.
+                                    void uploadAll();
+                                }}
+                                className="w-full py-2 bg-green-500 hover:bg-green-600 text-white rounded-xl transition-colors flex items-center justify-center gap-2 text-sm font-medium"
+                            >
+                                <FiUpload className="w-4 h-4" />
+                                Загрузить все (
+                                {queue.filter((q) => q.status === 'pending').length})
+                            </button>
+                        )
                     )}
                 </div>
             )}
@@ -517,6 +724,7 @@ const ZeroInjuryDocumentsManager: React.FC<ZeroInjuryDocumentsManagerProps> = ({
                             </div>
                             <div className="flex items-center gap-1 opacity-70 group-hover:opacity-100 transition">
                                 <button
+                                    type="button"
                                     onClick={() => handleDownload(doc)}
                                     className="p-1.5 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700"
                                     title="Скачать"
@@ -525,6 +733,7 @@ const ZeroInjuryDocumentsManager: React.FC<ZeroInjuryDocumentsManagerProps> = ({
                                 </button>
                                 {isEditable && (
                                     <button
+                                        type="button"
                                         onClick={() =>
                                             handleDelete(doc.id, doc.fileName)
                                         }
@@ -541,6 +750,8 @@ const ZeroInjuryDocumentsManager: React.FC<ZeroInjuryDocumentsManagerProps> = ({
             )}
         </div>
     );
-};
+});
+
+ZeroInjuryDocumentsManager.displayName = 'ZeroInjuryDocumentsManager';
 
 export default ZeroInjuryDocumentsManager;

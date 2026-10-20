@@ -115,15 +115,25 @@ export const safetyService = {
     },
 
     /**
-     * Загрузить новый файл для травмы
+     * Загрузить новый файл для травмы.
+     *
+     * onProgress — необязательный колбэк, вызывается по мере отправки байт
+     * (через axios `onUploadProgress`). Получает процент от 0 до 100.
+     *
+     * Если браузер/сервер не сообщают `total` (редко, обычно при chunked
+     * encoding без Content-Length), колбэк не вызывается — вызывающая
+     * сторона может показывать неопределённый прогресс («Загрузка...»).
+     *
      * @param injuryId - идентификатор травмы
      * @param file - файл для загрузки
      * @param description - описание файла (необязательно)
+     * @param onProgress - колбэк прогресса (необязательно)
      */
     async uploadFile(
         injuryId: string,
         file: File,
-        description?: string
+        description?: string,
+        onProgress?: (percent: number) => void
     ): Promise<InjuryFileDto> {
         const formData = new FormData();
         formData.append('file', file);
@@ -138,6 +148,22 @@ export const safetyService = {
             {
                 headers: {
                     'Content-Type': 'multipart/form-data',
+                },
+                onUploadProgress: (event) => {
+                    if (!onProgress) return;
+
+                    // axios 1.x предоставляет event.progress (0..1),
+                    // но только если известен total. Если progress есть —
+                    // используем его, иначе считаем по loaded/total.
+                    if (typeof event.progress === 'number') {
+                        onProgress(Math.round(event.progress * 100));
+                        return;
+                    }
+
+                    if (typeof event.total === 'number' && event.total > 0) {
+                        const percent = Math.round((event.loaded / event.total) * 100);
+                        onProgress(Math.min(100, percent));
+                    }
                 },
             }
         );
@@ -298,16 +324,24 @@ export const safetyService = {
 
     /**
      * Загрузить документ в программу.
+     *
+     * onProgress — необязательный колбэк, вызывается по мере отправки байт
+     * (через axios `onUploadProgress`). Получает процент от 0 до 100.
+     * Используется в режиме создания программы, чтобы показать реальный
+     * прогресс каждого документа, а также может использоваться в edit-mode.
+     *
      * @param programId - идентификатор программы
      * @param file - файл
      * @param documentType - тип документа (Order, Act, Report, Other)
      * @param description - описание (необязательно)
+     * @param onProgress - колбэк прогресса (необязательно)
      */
     async uploadZeroInjuryDocument(
         programId: string,
         file: File,
         documentType: string,
-        description?: string
+        description?: string,
+        onProgress?: (percent: number) => void
     ): Promise<import('../../types/greenCross').ZeroInjuryDocumentDto> {
         const formData = new FormData();
         formData.append('file', file);
@@ -321,6 +355,22 @@ export const safetyService = {
             formData,
             {
                 headers: { 'Content-Type': 'multipart/form-data' },
+                onUploadProgress: (event) => {
+                    if (!onProgress) return;
+
+                    // axios 1.x предоставляет event.progress (0..1),
+                    // но только если известен total. Если progress есть —
+                    // используем его, иначе считаем по loaded/total.
+                    if (typeof event.progress === 'number') {
+                        onProgress(Math.round(event.progress * 100));
+                        return;
+                    }
+
+                    if (typeof event.total === 'number' && event.total > 0) {
+                        const percent = Math.round((event.loaded / event.total) * 100);
+                        onProgress(Math.min(100, percent));
+                    }
+                },
             }
         );
         return response.data;

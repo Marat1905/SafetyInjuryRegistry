@@ -17,6 +17,55 @@
  *  • 'create' — создание новой программы;
  *  • 'edit'   — редактирование активной программы;
  *  • 'view'   — просмотр активной или завершённой программы.
+ *
+ * В режиме СОЗДАНИЯ появилась секция «Прикреплённые документы» на базе
+ * PendingZeroInjuryDocumentsManager. Пользователь может прикрепить приказы,
+ * распоряжения, акты и т.п. ещё до того, как программа создана. После
+ * успешного POST /zero-injury программа получает id, и handleCreate
+ * последовательно загружает документы с РЕАЛЬНЫМ прогрессом (через
+ * onUploadProgress axios). Пользователь видит полосы прогресса прямо
+ * в модалке — она не закрывается до завершения загрузки.
+ *
+ * В режиме РЕДАКТИРОВАНИЯ документы, добавленные через
+ * ZeroInjuryDocumentsManager, загружаются автоматически при нажатии
+ * кнопки «Сохранить изменения» — для этого компонент держит ref на
+ * ZeroInjuryDocumentsManager и вызывает его императивный метод
+ * uploadPending() после успешного обновления программы. Ровно так же
+ * это сделано для InjuryFilesManager в режиме редактирования травмы.
+ * Отдельная кнопка «Загрузить все» в этом режиме скрыта
+ * (hideUploadAllButton={true}), вместо неё показывается подсказка
+ * «Документы будут загружены при сохранении программы».
+ *
+ * Тост о результате показывается ПОСЛЕ загрузки документов и различает
+ * три исхода:
+ *   • документов не было — «Программа успешно запущена/обновлена»;
+ *   • все документы загружены — «…, документы загружены»;
+ *   • часть не загрузилась — «…, но N из M документов не удалось
+ *     загрузить». Программа при этом уже сохранена, поэтому
+ *     onChanged() и finalizeClose() вызываются в любом случае.
+ *
+ * Два способа закрытия модалки (такой же паттерн, как в InjuryModal):
+ *
+ *  • handleClose() — обычное, пользовательское закрытие. Проверяет, не
+ *    идёт ли сейчас создание/обновление (submitting), и если идёт —
+ *    игнорирует вызов. Используется во всех точках пользовательского
+ *    закрытия: кнопка X, клик по backdrop, кнопки «Отмена» и «Закрыть».
+ *
+ *  • finalizeClose() — принудительное закрытие. Не проверяет никаких
+ *    условий, сбрасывает pending-документы и их состояния загрузки,
+ *    и вызывает onClose(). Используется ТОЛЬКО из обработчиков успеха
+ *    (handleCreate, handleUpdate, handleDelete), где операция уже
+ *    завершена.
+ *
+
+ * Backdrop.
+ *
+ * Backdrop проверяет через ref + contains(): модалка закрывается только
+ * если клик пришёл вне <div ref={modalRef}>. Это defense-in-depth:
+ * даже если всплытие события случится (например, из-за синхронного
+ * window.confirm где-то в глубине), модалка не закроется, пока клик
+ * был внутри неё. Дополнительно handleClose блокируется, пока
+ * submitting === true.
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { format } from 'date-fns';
@@ -44,7 +93,33 @@ import type {
 } from '../../../types/greenCross';
 import { formatDuration, formatDurationShort } from '../../../utils/greenCross/formatDuration';
 import ZeroInjuryDocumentsManager from './ZeroInjuryDocumentsManager';
+import type {
+    ZeroInjuryDocumentsManagerHandle,
+    UploadZeroInjuryPendingResult,
+} from './ZeroInjuryDocumentsManager';
+import PendingZeroInjuryDocumentsManager from './PendingZeroInjuryDocumentsManager';
+import type {
+    PendingDocument,
+    PendingDocumentUploadState,
+} from './PendingZeroInjuryDocumentsManager';
 import { DatePicker } from '../../common';
+
+// ----------------------------------------------------------------------
+// Константы валидации файлов в режиме создания (должны совпадать
+// с бэкендом UploadZeroInjuryDocumentFormValidator и с константами
+// внутри PendingZeroInjuryDocumentsManager).
+// ----------------------------------------------------------------------
+const MAX_DOC_FILE_SIZE = 20 * 1024 * 1024; // 20 MB
+const ALLOWED_DOC_MIME_TYPES = [
+    'image/jpeg',
+    'image/jpg',
+    'image/png',
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+];
 
 interface ZeroInjuryModalProps {
     status: ZeroInjuryStatusDto;
@@ -86,15 +161,74 @@ const ZeroInjuryModal: React.FC<ZeroInjuryModalProps> = ({
         status.currentProgram
     );
 
+    // Состояния для pending-документов в режиме создания.
+    // pendingDocuments — что пользователь выбрал (файл, тип, описание);
+    // pendingDocumentUploadStates — карта id → { status, progress, error },
+    // заполняется handleCreate по мере загрузки.
+    const [pendingDocuments, setPendingDocuments] = useState<PendingDocument[]>([]);
+    const [pendingDocumentUploadStates, setPendingDocumentUploadStates] = useState<
+        Map<string, PendingDocumentUploadState>
+    >(new Map());
+
+    // Ref на менеджер документов в режиме редактирования. Через него
+    // handleUpdate запускает загрузку отложенных документов по кнопке
+    // «Сохранить изменения».
+    const docsManagerRef = useRef<ZeroInjuryDocumentsManagerHandle>(null);
+
     // Флаг: пользователь уже нажал «Начать новый период» и находится в форме создания.
     // Не даём фоновым обновлениям статуса сбросить режим обратно.
     const userStartedNewRef = useRef(false);
+
+    // Ref на внутренний контейнер модалки. Используется backdrop-обработчиком,
+    // чтобы понять, был ли клик внутри модалки или вне её.
+    const modalRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         if (userStartedNewRef.current) return;
         setMode(initialMode);
         setEditingProgram(status.currentProgram);
     }, [initialMode, status.currentProgram]);
+
+    /**
+     * Обычное, пользовательское закрытие модалки.
+     *
+     * Используется во всех точках, где пользователь явно закрывает
+     * модалку: кнопка X в шапке, клик по backdrop, кнопки «Отмена»
+     * и «Закрыть».
+     *
+     * Если прямо сейчас идёт создание/обновление программы
+     * (submitting === true), вызов игнорируется: закрывать модалку
+     * во время загрузки документов нельзя, иначе пользователь
+     * потеряет прогресс, а промисы продолжат обновлять состояние
+     * уже размонтированного компонента.
+     *
+     * ВАЖНО: НЕ используется для программного закрытия после успешной
+     * операции. Для этого есть finalizeClose(). Разделение ролей
+     * устраняет зависимость от «старого замыкания» и делает поведение
+     * предсказуемым.
+     */
+    const handleClose = () => {
+        if (submitting) return;
+        finalizeClose();
+    };
+
+    /**
+     * Принудительное закрытие модалки.
+     *
+     * Вызывается ТОЛЬКО из обработчиков успеха (handleCreate,
+     * handleUpdate, handleDelete), где операция уже завершена и
+     * никакие проверки не нужны. Сбрасывает pending-состояния,
+     * чтобы при повторном открытии модалки не было «фантомных»
+     * документов и статусов загрузки.
+     *
+     * Название «finalize» подчёркивает, что это финальный шаг операции,
+     * а не пользовательское действие.
+     */
+    const finalizeClose = () => {
+        setPendingDocuments([]);
+        setPendingDocumentUploadStates(new Map());
+        onClose();
+    };
 
     // ------------------------------------------------------------------
     // Форма создания
@@ -136,8 +270,80 @@ const ZeroInjuryModal: React.FC<ZeroInjuryModalProps> = ({
     }, [editingProgram?.id]);
 
     // ------------------------------------------------------------------
+    // Работа с pending-документами (режим создания)
+    // ------------------------------------------------------------------
+
+    /**
+     * Валидирует и добавляет файлы в очередь pending-документов.
+     * Валидация повторяет бэкенд: размер до 20 МБ и MIME-тип из
+     * разрешённого списка. Тип документа по умолчанию — 'Other',
+     * пользователь может изменить его в UI.
+     */
+    const addPendingDocuments = (files: File[]) => {
+        const validFiles: File[] = [];
+        for (const file of files) {
+            if (file.size > MAX_DOC_FILE_SIZE) {
+                toast.error(`Файл "${file.name}" превышает 20 МБ`);
+                continue;
+            }
+            if (!ALLOWED_DOC_MIME_TYPES.includes(file.type.toLowerCase())) {
+                toast.error(
+                    `Тип файла "${file.name}" не поддерживается. Разрешены: JPEG, PNG, PDF, DOC, DOCX, XLS, XLSX`
+                );
+                continue;
+            }
+            validFiles.push(file);
+        }
+        if (validFiles.length === 0) return;
+
+        const newDocs: PendingDocument[] = validFiles.map((file) => ({
+            id: `${Date.now()}-${Math.random()}-${file.name}`,
+            file,
+            description: '',
+            documentType: 'Other',
+        }));
+        setPendingDocuments((prev) => [...prev, ...newDocs]);
+        toast.success(`Добавлено документов: ${validFiles.length}`);
+    };
+
+    const removePendingDocument = (id: string) => {
+        setPendingDocuments((prev) => prev.filter((d) => d.id !== id));
+        toast('Документ удалён из очереди', { icon: '🗑️' });
+    };
+
+    const updatePendingDocumentDescription = (id: string, description: string) => {
+        setPendingDocuments((prev) =>
+            prev.map((d) => (d.id === id ? { ...d, description } : d))
+        );
+    };
+
+    const updatePendingDocumentType = (id: string, documentType: string) => {
+        setPendingDocuments((prev) =>
+            prev.map((d) => (d.id === id ? { ...d, documentType } : d))
+        );
+    };
+
+    // ------------------------------------------------------------------
     // Обработчики
     // ------------------------------------------------------------------
+
+    /**
+     * Создание программы с опциональной загрузкой документов.
+     *
+     * 1) POST /zero-injury — создаёт программу.
+     * 2) Если есть pending-документы — загружаем их последовательно
+     *    с реальным прогрессом через safetyService.uploadZeroInjuryDocument
+     *    (onProgress → setPendingDocumentUploadStates).
+     * 3) Показываем итоговый тост с учётом количества неудачных загрузок.
+     * 4) Небольшая пауза (0.5–1.5 сек), чтобы пользователь увидел
+     *    финальное состояние прогресс-баров, затем закрываем модалку
+     *    через finalizeClose().
+     *
+     * Закрытие через finalizeClose(), а не через handleClose(): на
+     * этот момент submitting === true (мы всё ещё внутри try), и
+     * handleClose() проигнорировал бы вызов. finalizeClose() закрывает
+     * принудительно, потому что операция уже успешно завершена.
+     */
     const handleCreate = async (data: {
         startDate: string;
         description: string;
@@ -145,15 +351,88 @@ const ZeroInjuryModal: React.FC<ZeroInjuryModalProps> = ({
     }) => {
         setSubmitting(true);
         try {
-            await safetyService.createZeroInjuryProgram({
+            const created = await safetyService.createZeroInjuryProgram({
                 startDate: data.startDate,
                 description: data.description,
                 targetDays: data.targetDays,
             });
-            toast.success('Программа «Ноль травм» успешно запущена');
+
+            const total = pendingDocuments.length;
+            let failed = 0;
+
+            if (total > 0) {
+                // Инициализируем состояния: все документы — 'uploading',
+                // progress 0. Сразу видно, что процесс пошёл.
+                const initial = new Map<string, PendingDocumentUploadState>();
+                for (const doc of pendingDocuments) {
+                    initial.set(doc.id, { status: 'uploading', progress: 0 });
+                }
+                setPendingDocumentUploadStates(initial);
+
+                // Загружаем последовательно, чтобы не создавать пиковую
+                // нагрузку на сервер и не запутаться в обновлениях Map.
+                for (const pending of pendingDocuments) {
+                    try {
+                        await safetyService.uploadZeroInjuryDocument(
+                            created.id,
+                            pending.file,
+                            pending.documentType,
+                            pending.description.trim() || undefined,
+                            (percent) => {
+                                setPendingDocumentUploadStates((prev) => {
+                                    const next = new Map(prev);
+                                    const cur = next.get(pending.id);
+                                    // Обновляем, только пока статус uploading —
+                                    // не перезаписываем success/error.
+                                    if (cur && cur.status === 'uploading') {
+                                        next.set(pending.id, { ...cur, progress: percent });
+                                    }
+                                    return next;
+                                });
+                            }
+                        );
+                        setPendingDocumentUploadStates((prev) => {
+                            const next = new Map(prev);
+                            next.set(pending.id, { status: 'success', progress: 100 });
+                            return next;
+                        });
+                    } catch (err) {
+                        failed++;
+                        console.error('Ошибка загрузки документа:', err);
+                        setPendingDocumentUploadStates((prev) => {
+                            const next = new Map(prev);
+                            next.set(pending.id, {
+                                status: 'error',
+                                progress: 0,
+                                error: 'Ошибка загрузки',
+                            });
+                            return next;
+                        });
+                    }
+                }
+
+                // Итоговый тост — после завершения всех загрузок.
+                if (failed > 0) {
+                    toast.error(
+                        `Программа создана, но ${failed} из ${total} документов не удалось загрузить`
+                    );
+                } else {
+                    toast.success('Программа «Ноль травм» запущена, документы загружены');
+                }
+
+                // Пауза, чтобы пользователь увидел финальное состояние
+                // прогресс-баров. При ошибках — дольше.
+                await new Promise((resolve) =>
+                    setTimeout(resolve, failed > 0 ? 1500 : 500)
+                );
+            } else {
+                // Документов не было — обычное сообщение.
+                toast.success('Программа «Ноль травм» успешно запущена');
+            }
+
             userStartedNewRef.current = false;
             onChanged();
-            onClose();
+            finalizeClose();
         } catch (err: any) {
             console.error(err);
             const message =
@@ -166,6 +445,30 @@ const ZeroInjuryModal: React.FC<ZeroInjuryModalProps> = ({
         }
     };
 
+    /**
+     * Обновление программы.
+     *
+     * После успешного PUT запускаем загрузку отложенных документов через
+     * императивный метод ZeroInjuryDocumentsManager.uploadPending(). Это
+     * избавляет пользователя от необходимости сначала нажимать «Загрузить
+     * все», а потом «Сохранить изменения»: достаточно выбрать документы и
+     * нажать «Сохранить изменения».
+     *
+     * uploadPending() возвращает UploadZeroInjuryPendingResult { total, failed },
+     * поэтому мы различаем три исхода и показываем честное сообщение:
+     *   • total === 0            — документов не было;
+     *   • total > 0, failed === 0 — всё загружено;
+     *   • total > 0, failed > 0   — часть документов не загрузилась.
+     *
+     * Тост об успешном сохранении показывается ТОЛЬКО здесь, после загрузки
+     * документов. Раньше он показывался сразу после PUT, и пользователь
+     * видел «обновлена», пока модалка ещё крутилась на загрузке.
+     *
+     * Независимо от результата загрузки документов программа уже сохранена,
+     * поэтому onChanged() и finalizeClose() вызываются в любом случае.
+     * finalizeClose(), а не handleClose(), потому что submitting === true
+     * (мы всё ещё внутри try), и handleClose() проигнорировал бы вызов.
+     */
     const handleUpdate = async (data: {
         startDate?: string;
         description?: string;
@@ -180,9 +483,34 @@ const ZeroInjuryModal: React.FC<ZeroInjuryModalProps> = ({
             if (typeof data.targetDays === 'number') payload.targetDays = data.targetDays;
 
             await safetyService.updateZeroInjuryProgram(editingProgram.id, payload);
-            toast.success('Программа обновлена');
+
+            // Загружаем отложенные документы, если пользователь добавил их
+            // в очередь через менеджер документов. Раньше для этого нужно
+            // было нажать отдельную кнопку «Загрузить все»; теперь загрузка
+            // выполняется в рамках той же операции сохранения.
+            let uploadResult: UploadZeroInjuryPendingResult | null = null;
+            if (docsManagerRef.current) {
+                uploadResult = await docsManagerRef.current.uploadPending();
+            }
+
+            // Показываем итоговое сообщение в зависимости от результата.
+            if (uploadResult && uploadResult.total > 0) {
+                if (uploadResult.failed > 0) {
+                    // Программа сохранена, но часть документов не загрузилась.
+                    // Это не ошибка сохранения — не валим сценарий, но честно сообщаем.
+                    toast.error(
+                        `Программа обновлена, но ${uploadResult.failed} из ${uploadResult.total} документов не удалось загрузить`
+                    );
+                } else {
+                    toast.success('Программа обновлена, документы загружены');
+                }
+            } else {
+                // Документов не было — обычное сообщение.
+                toast.success('Программа обновлена');
+            }
+
             onChanged();
-            onClose();
+            finalizeClose();
         } catch (err: any) {
             console.error(err);
             const message =
@@ -199,6 +527,10 @@ const ZeroInjuryModal: React.FC<ZeroInjuryModalProps> = ({
      * Удаление программы «Ноль травм» вместе со всеми прикреплёнными документами.
      * Доступно только Safety/Admin. Работает как для активной программы,
      * так и для любого завершённого периода из истории.
+     *
+     * Если удаляется та программа, которая открыта в форме/просмотре,
+     * модалка закрывается принудительно через finalizeClose(): программа
+     * удалена, проверять submitting бессмысленно.
      */
     const handleDelete = async (program: ZeroInjuryProgramDto) => {
         const docsCount = program.documents?.length ?? 0;
@@ -227,7 +559,7 @@ const ZeroInjuryModal: React.FC<ZeroInjuryModalProps> = ({
             // Если удалили тот, что сейчас открыт в форме/просмотре — закрываем модалку.
             if (editingProgram?.id === program.id) {
                 onChanged();
-                onClose();
+                finalizeClose();
                 return;
             }
             onChanged();
@@ -260,6 +592,10 @@ const ZeroInjuryModal: React.FC<ZeroInjuryModalProps> = ({
             description: '',
             targetDays: 365,
         });
+        // Сброс pending-документов: если пользователь уже добавлял их
+        // в предыдущей сессии, они не должны «прилипать» к новой.
+        setPendingDocuments([]);
+        setPendingDocumentUploadStates(new Map());
         userStartedNewRef.current = true;
         setMode('create');
         setEditingProgram(null);
@@ -305,6 +641,16 @@ const ZeroInjuryModal: React.FC<ZeroInjuryModalProps> = ({
 
     // ------------------------------------------------------------------
     // Форма создания/редактирования (вкладка «Период»).
+    //
+    // Возвращает form, который сам по себе flex-контейнер: поля скроллятся
+    // (flex-1 overflow-y-auto), а footer с кнопками прибит к низу
+    // (flex-shrink-0). Благодаря этому кнопки «Удалить программу»,
+    // «Назад», «Отмена» и «Сохранить/Создать» всегда видны без скролла,
+    // даже если полей и прикреплённых документов много.
+    //
+    // min-h-0 на форме — обязательное условие: без него flexbox не
+    // даёт содержимому сжаться ниже естественного размера, и
+    // overflow-y-auto внутри не срабатывает.
     // ------------------------------------------------------------------
     const renderForm = () => {
         const isCreate = mode === 'create';
@@ -313,162 +659,226 @@ const ZeroInjuryModal: React.FC<ZeroInjuryModalProps> = ({
         const submitLabel = isCreate ? 'Создать' : 'Сохранить изменения';
 
         return (
-            <form onSubmit={form.handleSubmit(onSubmit as any)} className="space-y-5">
-                {/* Дата начала */}
-                <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        Дата начала периода *
-                    </label>
-                    <Controller
-                        name="startDate"
-                        control={form.control as any}
-                        render={({ field }) => (
-                            <DatePicker
-                                date={field.value ? new Date(field.value) : new Date()}
-                                onChange={(d) => field.onChange(format(d, 'yyyy-MM-dd'))}
-                                minDate={
-                                    status.nextAllowedStartDate
-                                        ? new Date(status.nextAllowedStartDate)
-                                        : undefined
-                                }
-                                maxDate={new Date()}
-                            />
-                        )}
-                    />
-                    {(form.formState.errors as any).startDate && (
-                        <p className="mt-1 text-xs text-red-500">
-                            {(form.formState.errors as any).startDate.message as string}
-                        </p>
-                    )}
-                    {status.nextAllowedStartDate && (
-                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                            Минимальная дата:{' '}
-                            {format(new Date(status.nextAllowedStartDate), 'dd.MM.yyyy')}
-                            {status.lastSignificantInjuryDate && (
-                                <>
-                                    {' '}
-                                    (последняя значимая травма:{' '}
-                                    {format(new Date(status.lastSignificantInjuryDate), 'dd.MM.yyyy')})
-                                </>
-                            )}
-                        </p>
-                    )}
-                </div>
-
-                {/* Описание */}
-                <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        Описание / основание *
-                    </label>
-                    <Controller
-                        name="description"
-                        control={form.control as any}
-                        render={({ field }) => (
-                            <textarea
-                                {...field}
-                                rows={4}
-                                placeholder="Например: приказ №238 от 30.09.2026"
-                                className={`w-full px-4 py-2 border rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent dark:bg-gray-700 dark:text-white ${(form.formState.errors as any).description
-                                        ? 'border-red-500 dark:border-red-500'
-                                        : 'border-gray-300 dark:border-gray-600'
-                                    }`}
-                            />
-                        )}
-                    />
-                    {(form.formState.errors as any).description && (
-                        <p className="mt-1 text-xs text-red-500">
-                            {(form.formState.errors as any).description.message as string}
-                        </p>
-                    )}
-                </div>
-
-                {/* Целевой период */}
-                <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        Целевой период (дней)
-                    </label>
-                    <Controller
-                        name="targetDays"
-                        control={form.control as any}
-                        render={({ field }) => (
-                            <input
-                                type="number"
-                                value={field.value ?? 365}
-                                onChange={(e) => field.onChange(Number(e.target.value))}
-                                min={1}
-                                max={3650}
-                                className={`w-full px-4 py-2 border rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent dark:bg-gray-700 dark:text-white ${(form.formState.errors as any).targetDays
-                                        ? 'border-red-500 dark:border-red-500'
-                                        : 'border-gray-300 dark:border-gray-600'
-                                    }`}
-                            />
-                        )}
-                    />
-                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                        Завершение периода будет отмечено системой автоматически при достижении
-                        этого количества дней.
-                    </p>
-                </div>
-
-                {/* Документы — только для редактирования уже созданной программы */}
-                {!isCreate && editingProgram && (
+            <form
+                onSubmit={form.handleSubmit(onSubmit as any)}
+                className="flex flex-col flex-1 min-h-0"
+            >
+                {/* Прокручиваемая область с полями. flex-1 забирает всё
+                    доступное пространство, overflow-y-auto добавляет скролл,
+                    если контента больше, чем помещается. space-y-5 —
+                    отступы между полями, как и раньше. */}
+                <div className="flex-1 overflow-y-auto p-5 custom-scrollbar space-y-5">
+                    {/* Дата начала */}
                     <div>
-                        <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2 uppercase tracking-wide">
-                            Прикреплённые документы
-                        </h4>
-                        <ZeroInjuryDocumentsManager
-                            programId={editingProgram.id}
-                            isEditable={true}
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                            Дата начала периода *
+                        </label>
+                        <Controller
+                            name="startDate"
+                            control={form.control as any}
+                            render={({ field }) => (
+                                <DatePicker
+                                    date={field.value ? new Date(field.value) : new Date()}
+                                    onChange={(d) => field.onChange(format(d, 'yyyy-MM-dd'))}
+                                    minDate={
+                                        status.nextAllowedStartDate
+                                            ? new Date(status.nextAllowedStartDate)
+                                            : undefined
+                                    }
+                                    maxDate={new Date()}
+                                />
+                            )}
                         />
+                        {(form.formState.errors as any).startDate && (
+                            <p className="mt-1 text-xs text-red-500">
+                                {(form.formState.errors as any).startDate.message as string}
+                            </p>
+                        )}
+                        {status.nextAllowedStartDate && (
+                            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                Минимальная дата:{' '}
+                                {format(new Date(status.nextAllowedStartDate), 'dd.MM.yyyy')}
+                                {status.lastSignificantInjuryDate && (
+                                    <>
+                                        {' '}
+                                        (последняя значимая травма:{' '}
+                                        {format(new Date(status.lastSignificantInjuryDate), 'dd.MM.yyyy')})
+                                    </>
+                                )}
+                            </p>
+                        )}
                     </div>
-                )}
 
-                {/* Кнопки */}
-                <div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
+                    {/* Описание */}
                     <div>
-                        {mode === 'edit' && editingProgram && (
-                            <button
-                                type="button"
-                                onClick={() => handleDelete(editingProgram)}
-                                className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-xl transition-colors flex items-center space-x-2"
-                            >
-                                <FiTrash2 className="w-4 h-4" />
-                                <span>Удалить программу</span>
-                            </button>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                            Описание / основание *
+                        </label>
+                        <Controller
+                            name="description"
+                            control={form.control as any}
+                            render={({ field }) => (
+                                <textarea
+                                    {...field}
+                                    rows={4}
+                                    placeholder="Например: приказ №238 от 30.09.2026"
+                                    className={`w-full px-4 py-2 border rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent dark:bg-gray-700 dark:text-white ${(form.formState.errors as any).description
+                                        ? 'border-red-500 dark:border-red-500'
+                                        : 'border-gray-300 dark:border-gray-600'
+                                        }`}
+                                />
+                            )}
+                        />
+                        {(form.formState.errors as any).description && (
+                            <p className="mt-1 text-xs text-red-500">
+                                {(form.formState.errors as any).description.message as string}
+                            </p>
                         )}
                     </div>
-                    <div className="flex items-center gap-2 ml-auto">
-                        {mode === 'create' && status.lastFinalizedProgram && (
+
+                    {/* Целевой период */}
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                            Целевой период (дней)
+                        </label>
+                        <Controller
+                            name="targetDays"
+                            control={form.control as any}
+                            render={({ field }) => (
+                                <input
+                                    type="number"
+                                    value={field.value ?? 365}
+                                    onChange={(e) => field.onChange(Number(e.target.value))}
+                                    min={1}
+                                    max={3650}
+                                    className={`w-full px-4 py-2 border rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent dark:bg-gray-700 dark:text-white ${(form.formState.errors as any).targetDays
+                                        ? 'border-red-500 dark:border-red-500'
+                                        : 'border-gray-300 dark:border-gray-600'
+                                        }`}
+                                />
+                            )}
+                        />
+                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                            Завершение периода будет отмечено системой автоматически при достижении
+                            этого количества дней.
+                        </p>
+                    </div>
+
+                    {/* Документы:
+                        • в режиме создания — PendingZeroInjuryDocumentsManager
+                          (пользователь выбирает документы ДО создания программы,
+                          загрузка происходит после POST с реальным прогрессом);
+                        • в режиме редактирования — ZeroInjuryDocumentsManager
+                          (программа уже существует, у неё есть programId).
+                          В этом режиме документы загружаются по кнопке
+                          «Сохранить изменения» — через ref и uploadPending(),
+                          как в InjuryFilesManager для травм. Отдельная кнопка
+                          «Загрузить все» скрыта (hideUploadAllButton). */}
+                    {isCreate && (
+                        <div>
+                            <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2 uppercase tracking-wide">
+                                Прикреплённые документы
+                            </h4>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                                Необязательно. Приказы, распоряжения, акты и другие документы.
+                                Будут загружены при создании программы — прогресс появится здесь.
+                            </p>
+                            <PendingZeroInjuryDocumentsManager
+                                pendingDocuments={pendingDocuments}
+                                onAddDocuments={addPendingDocuments}
+                                onRemoveDocument={removePendingDocument}
+                                onUpdateDescription={updatePendingDocumentDescription}
+                                onUpdateDocumentType={updatePendingDocumentType}
+                                uploadStates={pendingDocumentUploadStates}
+                                disabled={submitting}
+                            />
+                        </div>
+                    )}
+
+                    {!isCreate && editingProgram && (
+                        <div>
+                            <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2 uppercase tracking-wide">
+                                Прикреплённые документы
+                            </h4>
+                            {/*
+                              В режиме редактирования менеджер получает:
+                                • ref — через него handleUpdate вызывает uploadPending()
+                                  после успешного PUT, чтобы документы ушли по кнопке
+                                  «Сохранить изменения»;
+                                • hideUploadAllButton — скрывает отдельную кнопку
+                                  «Загрузить все», чтобы не было двухшагового сценария
+                                  (ровно так же это сделано для InjuryFilesManager).
+                              Прогресс загрузки здесь реальный: uploadAll передаёт
+                              onProgress в safetyService.uploadZeroInjuryDocument,
+                              а тот — в axios.
+                            */}
+                            <ZeroInjuryDocumentsManager
+                                ref={docsManagerRef}
+                                programId={editingProgram.id}
+                                isEditable={true}
+                                hideUploadAllButton={true}
+                            />
+                        </div>
+                    )}
+                </div>
+
+                {/* Footer с кнопками. flex-shrink-0 — не сжимается, всегда
+                    виден внизу модалки. rounded-b-2xl — совпадает со
+                    скруглением модалки. bg-white dark:bg-gray-800 —
+                    перекрывает возможные артефакты скролла под ним. */}
+                <div className="flex-shrink-0 px-5 py-4 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 rounded-b-2xl">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                            {mode === 'edit' && editingProgram && (
+                                <button
+                                    type="button"
+                                    onClick={() => handleDelete(editingProgram)}
+                                    className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-xl transition-colors flex items-center space-x-2"
+                                >
+                                    <FiTrash2 className="w-4 h-4" />
+                                    <span>Удалить программу</span>
+                                </button>
+                            )}
+                        </div>
+                        <div className="flex items-center gap-2 ml-auto">
+                            {mode === 'create' && status.lastFinalizedProgram && (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        userStartedNewRef.current = false;
+                                        setMode('view');
+                                        setEditingProgram(null);
+                                        // Сбрасываем pending-документы при возврате
+                                        // из формы создания — чтобы они не «прилипли»
+                                        // к следующей попытке.
+                                        setPendingDocuments([]);
+                                        setPendingDocumentUploadStates(new Map());
+                                    }}
+                                    className="px-4 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-xl transition-colors"
+                                >
+                                    Назад
+                                </button>
+                            )}
                             <button
                                 type="button"
-                                onClick={() => {
-                                    userStartedNewRef.current = false;
-                                    setMode('view');
-                                    setEditingProgram(null);
-                                }}
-                                className="px-4 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-xl transition-colors"
+                                onClick={handleClose}
+                                disabled={submitting}
+                                className="px-4 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                             >
-                                Назад
+                                Отмена
                             </button>
-                        )}
-                        <button
-                            type="button"
-                            onClick={onClose}
-                            className="px-4 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-xl transition-colors"
-                        >
-                            Отмена
-                        </button>
-                        <button
-                            type="submit"
-                            disabled={submitting}
-                            className="px-5 py-2 bg-green-500 hover:bg-green-600 disabled:bg-green-300 text-white rounded-xl transition-colors flex items-center space-x-2"
-                        >
-                            {submitting && (
-                                <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
-                            )}
-                            <FiPlus className="w-4 h-4" />
-                            <span>{submitting ? 'Сохранение...' : submitLabel}</span>
-                        </button>
+                            <button
+                                type="submit"
+                                disabled={submitting}
+                                className="px-5 py-2 bg-green-500 hover:bg-green-600 disabled:bg-green-300 text-white rounded-xl transition-colors flex items-center space-x-2"
+                            >
+                                {submitting && (
+                                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
+                                )}
+                                <FiPlus className="w-4 h-4" />
+                                <span>{submitting ? 'Сохранение...' : submitLabel}</span>
+                            </button>
+                        </div>
                     </div>
                 </div>
             </form>
@@ -477,6 +887,10 @@ const ZeroInjuryModal: React.FC<ZeroInjuryModalProps> = ({
 
     // ------------------------------------------------------------------
     // Просмотр активной/завершённой программы (вкладка «Период»).
+    //
+    // Возвращает flex-контейнер: контент скроллится (flex-1 overflow-y-auto),
+    // а footer с кнопками «Удалить период» и «Закрыть» прибит к низу
+    // (flex-shrink-0) — всегда виден без скролла.
     // ------------------------------------------------------------------
     const renderView = () => {
         const program = editingProgram ?? status.currentProgram ?? status.lastFinalizedProgram;
@@ -485,8 +899,10 @@ const ZeroInjuryModal: React.FC<ZeroInjuryModalProps> = ({
             // Для обычного пользователя — заглушку с пояснением.
             if (isSafetyEngineer) return renderForm();
             return (
-                <div className="text-center py-10 text-gray-400 dark:text-gray-500">
-                    Программа «Ноль травм» не запущена.
+                <div className="flex-1 overflow-y-auto p-5 custom-scrollbar">
+                    <div className="text-center py-10 text-gray-400 dark:text-gray-500">
+                        Программа «Ноль травм» не запущена.
+                    </div>
                 </div>
             );
         }
@@ -504,162 +920,167 @@ const ZeroInjuryModal: React.FC<ZeroInjuryModalProps> = ({
         const missingToTarget = Math.max(0, program.targetDays - program.daysPassed);
 
         return (
-            <div className="space-y-5">
-                {/* Верхняя строка: большая цифра + статус */}
-                <div className="flex items-start justify-between flex-wrap gap-3">
-                    <div>
-                        <div className="text-3xl font-bold text-gray-800 dark:text-white">
-                            {program.daysPassed}{' '}
-                            <span className="text-xl text-gray-500 dark:text-gray-400 font-medium">
-                                / {program.targetDays} дн.
-                            </span>
+            <div className="flex flex-col flex-1 min-h-0">
+                {/* Прокручиваемая область с содержимым программы. */}
+                <div className="flex-1 overflow-y-auto p-5 custom-scrollbar space-y-5">
+                    {/* Верхняя строка: большая цифра + статус */}
+                    <div className="flex items-start justify-between flex-wrap gap-3">
+                        <div>
+                            <div className="text-3xl font-bold text-gray-800 dark:text-white">
+                                {program.daysPassed}{' '}
+                                <span className="text-xl text-gray-500 dark:text-gray-400 font-medium">
+                                    / {program.targetDays} дн.
+                                </span>
+                            </div>
+                            <div className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+                                {headerLabel}. Начало: {format(new Date(program.startDate), 'dd.MM.yyyy')}
+                            </div>
                         </div>
-                        <div className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-                            {headerLabel}. Начало: {format(new Date(program.startDate), 'dd.MM.yyyy')}
-                        </div>
+                        {renderStatusBadge(program)}
                     </div>
-                    {renderStatusBadge(program)}
-                </div>
 
-                {/* Плашка для прерванного периода */}
-                {isInterrupted && (
-                    <div className="bg-red-50 dark:bg-red-900/20 rounded-xl p-4 border border-red-200 dark:border-red-800">
-                        <div className="flex items-start gap-3">
-                            <FiAlertTriangle className="w-6 h-6 text-red-500 flex-shrink-0 mt-0.5" />
-                            <div className="flex-1 min-w-0">
-                                <div className="text-base font-semibold text-red-700 dark:text-red-300">
-                                    Период длился {formatDuration(program.daysPassed)} до прерывания
-                                </div>
-                                {program.completedAt && (
-                                    <div className="text-sm text-red-600 dark:text-red-400 mt-1">
-                                        Прервано значимой травмой (П1/П2) —{' '}
-                                        {format(new Date(program.completedAt), 'dd.MM.yyyy')}.
-                                        {' '}Целевой период {program.targetDays} дней не был достигнут.
+                    {/* Плашка для прерванного периода */}
+                    {isInterrupted && (
+                        <div className="bg-red-50 dark:bg-red-900/20 rounded-xl p-4 border border-red-200 dark:border-red-800">
+                            <div className="flex items-start gap-3">
+                                <FiAlertTriangle className="w-6 h-6 text-red-500 flex-shrink-0 mt-0.5" />
+                                <div className="flex-1 min-w-0">
+                                    <div className="text-base font-semibold text-red-700 dark:text-red-300">
+                                        Период длился {formatDuration(program.daysPassed)} до прерывания
                                     </div>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {/* Плашка для успешного завершения */}
-                {isCompleted && (
-                    <div className="bg-green-50 dark:bg-green-900/20 rounded-xl p-4 border border-green-200 dark:border-green-800">
-                        <div className="flex items-start gap-3">
-                            <FiCheckCircle className="w-6 h-6 text-green-600 flex-shrink-0 mt-0.5" />
-                            <div className="flex-1 min-w-0">
-                                <div className="text-base font-semibold text-green-700 dark:text-green-300">
-                                    Период пройден полностью — {formatDuration(program.daysPassed)}
+                                    {program.completedAt && (
+                                        <div className="text-sm text-red-600 dark:text-red-400 mt-1">
+                                            Прервано значимой травмой (П1/П2) —{' '}
+                                            {format(new Date(program.completedAt), 'dd.MM.yyyy')}.
+                                            {' '}Целевой период {program.targetDays} дней не был достигнут.
+                                        </div>
+                                    )}
                                 </div>
-                                {program.completedAt && (
-                                    <div className="text-sm text-green-600 dark:text-green-400 mt-1">
-                                        Успешно завершён {format(new Date(program.completedAt), 'dd.MM.yyyy')}.
-                                        {' '}Значимых травм (П1/П2) за период не зафиксировано.
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {/* Описание / основание */}
-                <div className="bg-gray-50 dark:bg-gray-800/40 rounded-xl p-4 border border-gray-100 dark:border-gray-700">
-                    <h4 className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">
-                        Описание / основание
-                    </h4>
-                    <p className="text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap">
-                        {program.description || '—'}
-                    </p>
-                </div>
-
-                {/* Карточки метрик */}
-                <div className="grid grid-cols-2 gap-3">
-                    <div className="bg-gray-50 dark:bg-gray-800/40 rounded-xl p-3 border border-gray-100 dark:border-gray-700">
-                        <div className="text-xs text-gray-500 dark:text-gray-400">
-                            {isActive ? 'Прошло дней' : 'Длительность периода'}
-                        </div>
-                        <div className="text-lg font-semibold text-gray-800 dark:text-white">
-                            {program.daysPassed}
-                        </div>
-                        {isInterrupted && (
-                            <div className="text-[11px] text-red-500 dark:text-red-400 mt-0.5">
-                                до прерывания
-                            </div>
-                        )}
-                    </div>
-                    <div className="bg-gray-50 dark:bg-gray-800/40 rounded-xl p-3 border border-gray-100 dark:border-gray-700">
-                        <div className="text-xs text-gray-500 dark:text-gray-400">
-                            {isInterrupted
-                                ? 'Не хватило до цели'
-                                : isCompleted
-                                    ? 'Цель достигнута'
-                                    : 'Осталось дней'}
-                        </div>
-                        <div className="text-lg font-semibold text-gray-800 dark:text-white">
-                            {isInterrupted
-                                ? missingToTarget
-                                : isCompleted
-                                    ? '✓'
-                                    : program.daysRemaining}
-                        </div>
-                        {isInterrupted && (
-                            <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
-                                из {program.targetDays} дн.
-                            </div>
-                        )}
-                    </div>
-                    {program.completedAt && (
-                        <div className="col-span-2 bg-gray-50 dark:bg-gray-800/40 rounded-xl p-3 border border-gray-100 dark:border-gray-700">
-                            <div className="text-xs text-gray-500 dark:text-gray-400">
-                                {isInterrupted ? 'Дата прерывания' : 'Дата завершения'}
-                            </div>
-                            <div className="text-lg font-semibold text-gray-800 dark:text-white">
-                                {format(new Date(program.completedAt), 'dd.MM.yyyy')}
                             </div>
                         </div>
                     )}
-                </div>
 
-                <div className="text-xs text-gray-500 dark:text-gray-400">
-                    Установил: {program.setByUserName || '—'}
-                </div>
+                    {/* Плашка для успешного завершения */}
+                    {isCompleted && (
+                        <div className="bg-green-50 dark:bg-green-900/20 rounded-xl p-4 border border-green-200 dark:border-green-800">
+                            <div className="flex items-start gap-3">
+                                <FiCheckCircle className="w-6 h-6 text-green-600 flex-shrink-0 mt-0.5" />
+                                <div className="flex-1 min-w-0">
+                                    <div className="text-base font-semibold text-green-700 dark:text-green-300">
+                                        Период пройден полностью — {formatDuration(program.daysPassed)}
+                                    </div>
+                                    {program.completedAt && (
+                                        <div className="text-sm text-green-600 dark:text-green-400 mt-1">
+                                            Успешно завершён {format(new Date(program.completedAt), 'dd.MM.yyyy')}.
+                                            {' '}Значимых травм (П1/П2) за период не зафиксировано.
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
-                {/* Документы */}
-                <div>
-                    <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2 uppercase tracking-wide">
-                        Прикреплённые документы
-                    </h4>
-                    <ZeroInjuryDocumentsManager
-                        programId={program.id}
-                        isEditable={false}
-                    />
-                </div>
+                    {/* Описание / основание */}
+                    <div className="bg-gray-50 dark:bg-gray-800/40 rounded-xl p-4 border border-gray-100 dark:border-gray-700">
+                        <h4 className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">
+                            Описание / основание
+                        </h4>
+                        <p className="text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap">
+                            {program.description || '—'}
+                        </p>
+                    </div>
 
-                {/* Нижняя панель.
-                    Кнопка «Удалить период» показывается только Safety/Admin.
-                    Кнопка «Начать новый период» рисуется в отдельном блоке
-                    сверху и в этом блоке не дублируется. */}
-                <div className="flex flex-wrap items-center justify-between gap-2 pt-4 border-t border-gray-200 dark:border-gray-700">
-                    <div>
-                        {isSafetyEngineer && program.isCompleted && (
-                            <button
-                                type="button"
-                                onClick={() => handleDelete(program)}
-                                className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-xl transition-colors flex items-center space-x-2"
-                                title="Удалить завершённый период вместе с документами"
-                            >
-                                <FiTrash2 className="w-4 h-4" />
-                                <span>Удалить период</span>
-                            </button>
+                    {/* Карточки метрик */}
+                    <div className="grid grid-cols-2 gap-3">
+                        <div className="bg-gray-50 dark:bg-gray-800/40 rounded-xl p-3 border border-gray-100 dark:border-gray-700">
+                            <div className="text-xs text-gray-500 dark:text-gray-400">
+                                {isActive ? 'Прошло дней' : 'Длительность периода'}
+                            </div>
+                            <div className="text-lg font-semibold text-gray-800 dark:text-white">
+                                {program.daysPassed}
+                            </div>
+                            {isInterrupted && (
+                                <div className="text-[11px] text-red-500 dark:text-red-400 mt-0.5">
+                                    до прерывания
+                                </div>
+                            )}
+                        </div>
+                        <div className="bg-gray-50 dark:bg-gray-800/40 rounded-xl p-3 border border-gray-100 dark:border-gray-700">
+                            <div className="text-xs text-gray-500 dark:text-gray-400">
+                                {isInterrupted
+                                    ? 'Не хватило до цели'
+                                    : isCompleted
+                                        ? 'Цель достигнута'
+                                        : 'Осталось дней'}
+                            </div>
+                            <div className="text-lg font-semibold text-gray-800 dark:text-white">
+                                {isInterrupted
+                                    ? missingToTarget
+                                    : isCompleted
+                                        ? '✓'
+                                        : program.daysRemaining}
+                            </div>
+                            {isInterrupted && (
+                                <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
+                                    из {program.targetDays} дн.
+                                </div>
+                            )}
+                        </div>
+                        {program.completedAt && (
+                            <div className="col-span-2 bg-gray-50 dark:bg-gray-800/40 rounded-xl p-3 border border-gray-100 dark:border-gray-700">
+                                <div className="text-xs text-gray-500 dark:text-gray-400">
+                                    {isInterrupted ? 'Дата прерывания' : 'Дата завершения'}
+                                </div>
+                                <div className="text-lg font-semibold text-gray-800 dark:text-white">
+                                    {format(new Date(program.completedAt), 'dd.MM.yyyy')}
+                                </div>
+                            </div>
                         )}
                     </div>
-                    <div className="ml-auto">
-                        <button
-                            onClick={onClose}
-                            className="px-4 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-xl"
-                        >
-                            Закрыть
-                        </button>
+
+                    <div className="text-xs text-gray-500 dark:text-gray-400">
+                        Установил: {program.setByUserName || '—'}
+                    </div>
+
+                    {/* Документы */}
+                    <div>
+                        <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2 uppercase tracking-wide">
+                            Прикреплённые документы
+                        </h4>
+                        <ZeroInjuryDocumentsManager
+                            programId={program.id}
+                            isEditable={false}
+                        />
+                    </div>
+                </div>
+
+                {/* Footer с кнопками. flex-shrink-0 — не сжимается, всегда
+                    виден внизу модалки. rounded-b-2xl — совпадает со
+                    скруглением модалки. */}
+                <div className="flex-shrink-0 px-5 py-4 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 rounded-b-2xl">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                            {isSafetyEngineer && program.isCompleted && (
+                                <button
+                                    type="button"
+                                    onClick={() => handleDelete(program)}
+                                    className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-xl transition-colors flex items-center space-x-2"
+                                    title="Удалить завершённый период вместе с документами"
+                                >
+                                    <FiTrash2 className="w-4 h-4" />
+                                    <span>Удалить период</span>
+                                </button>
+                            )}
+                        </div>
+                        <div className="ml-auto">
+                            <button
+                                type="button"
+                                onClick={handleClose}
+                                className="px-4 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-xl"
+                            >
+                                Закрыть
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -668,6 +1089,10 @@ const ZeroInjuryModal: React.FC<ZeroInjuryModalProps> = ({
 
     // ------------------------------------------------------------------
     // Вкладка «История» — все завершённые периоды.
+    //
+    // Только прокручиваемый контент, footer не нужен: закрытие модалки
+    // доступно через X в шапке. Если когда-нибудь понадобятся кнопки
+    // внизу истории — добавить по образцу renderView.
     // ------------------------------------------------------------------
     const renderHistoryTab = () => {
         // Берём из общей истории только завершённые программы,
@@ -681,11 +1106,13 @@ const ZeroInjuryModal: React.FC<ZeroInjuryModalProps> = ({
 
         if (finalized.length === 0) {
             return (
-                <div className="text-center py-16 text-gray-400 dark:text-gray-500">
-                    <FiList className="w-12 h-12 mx-auto mb-3 opacity-40" />
-                    <div className="text-sm">История периодов пуста</div>
-                    <div className="text-xs mt-1">
-                        Завершённые и прерванные периоды появятся здесь автоматически.
+                <div className="flex-1 overflow-y-auto p-5 custom-scrollbar">
+                    <div className="text-center py-16 text-gray-400 dark:text-gray-500">
+                        <FiList className="w-12 h-12 mx-auto mb-3 opacity-40" />
+                        <div className="text-sm">История периодов пуста</div>
+                        <div className="text-xs mt-1">
+                            Завершённые и прерванные периоды появятся здесь автоматически.
+                        </div>
                     </div>
                 </div>
             );
@@ -696,7 +1123,7 @@ const ZeroInjuryModal: React.FC<ZeroInjuryModalProps> = ({
         const interruptedCount = finalized.length - completedCount;
 
         return (
-            <div className="space-y-4">
+            <div className="flex-1 overflow-y-auto p-5 custom-scrollbar space-y-4">
                 {/* Сводка по истории */}
                 <div className="grid grid-cols-3 gap-3">
                     <div className="bg-gray-50 dark:bg-gray-800/40 rounded-xl p-3 border border-gray-100 dark:border-gray-700">
@@ -753,8 +1180,8 @@ const ZeroInjuryModal: React.FC<ZeroInjuryModalProps> = ({
                                         {' '}
                                         <span
                                             className={`inline-block ml-1 text-xs ${interrupted
-                                                    ? 'text-red-500 dark:text-red-400'
-                                                    : 'text-green-600 dark:text-green-400'
+                                                ? 'text-red-500 dark:text-red-400'
+                                                : 'text-green-600 dark:text-green-400'
                                                 }`}
                                         >
                                             ({formatDurationShort(p.daysPassed)})
@@ -821,39 +1248,88 @@ const ZeroInjuryModal: React.FC<ZeroInjuryModalProps> = ({
 
     // ------------------------------------------------------------------
     // Рендер
+    //
+    // Структура модалки:
+    //   Modal (flex flex-col h-[92vh])
+    //   ├── Header (flex-shrink-0, rounded-t-2xl)
+    //   ├── Tabs (flex-shrink-0)
+    //   ├── «Начать новый период» (flex-shrink-0, если показывается)
+    //   └── Контент — одна из трёх веток (каждая сама управляет скроллом
+    //       и футером):
+    //       ├── renderForm()      — форма создания/редактирования
+    //       ├── renderView()      — просмотр программы
+    //       └── renderHistoryTab() — история периодов
+    //
+    // Благодаря h-[92vh] высота окна фиксирована и не «прыгает» при
+    // переключении вкладок. Благодаря flex-shrink-0 на header/tabs/
+    // startnew/footer и flex-1 min-h-0 на контенте кнопки действий
+    // всегда видны внизу без скролла, а прокручивается только сам контент.
     // ------------------------------------------------------------------
     return (
         <div
             className="fixed inset-0 bg-black/60 dark:bg-gray-900/80 flex items-center justify-center p-4 z-50 backdrop-blur-sm"
-            onClick={onClose}
+            /*
+              Backdrop закрывает модалку только если клик пришёл ВНЕ
+              <div ref={modalRef}>. Проверка через contains() надёжнее,
+              чем e.target === e.currentTarget: она работает независимо
+              от того, насколько глубоко в DOM находится target (SVG внутри
+              кнопки, span внутри лейбла и т.п.).
+
+              Это defense-in-depth: даже если всплытие события случится
+              (например, из-за синхронного window.confirm где-то в глубине),
+              модалка не закроется, пока клик был внутри неё. Дополнительно
+              handleClose блокируется, пока submitting === true.
+            */
+            onMouseDown={(e) => {
+                if (modalRef.current && !modalRef.current.contains(e.target as Node)) {
+                    handleClose();
+                }
+            }}
         >
             <div
-                className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-4xl flex flex-col max-h-[92vh]"
-                onClick={(e) => e.stopPropagation()}
+                ref={modalRef}
+                /*
+                  h-[92vh] вместо max-h-[92vh]:
+                  фиксированная высота 92% высоты viewport. Благодаря этому
+                  переключение вкладок «Период» ↔ «История» больше не меняет
+                  высоту окна — оно всегда одного размера.
+
+                  flex flex-col — контейнер распределяет пространство между
+                  header, tabs, «Начать новый период», контентом и footer'ом.
+                  Контент (форма/view/history) получает flex-1 и внутренний
+                  overflow-y-auto — скроллится только он. Header, tabs и
+                  footer — flex-shrink-0, поэтому не сжимаются и не
+                  уезжают за пределы окна.
+                */
+                className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-4xl flex flex-col h-[92vh]"
             >
-                {/* Заголовок */}
-                <div className="flex justify-between items-center p-5 border-b border-gray-200 dark:border-gray-700 sticky top-0 bg-white dark:bg-gray-800 z-10 rounded-t-2xl">
+                {/* Заголовок. flex-shrink-0 — не сжимается, всегда виден. */}
+                <div className="flex-shrink-0 flex justify-between items-center p-5 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 z-10 rounded-t-2xl">
                     <h3 className="text-xl font-semibold text-gray-800 dark:text-white flex items-center gap-2">
                         {getIcon()} {getTitle()}
                     </h3>
                     <button
-                        onClick={onClose}
-                        className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                        type="button"
+                        onClick={handleClose}
+                        disabled={submitting}
+                        className={`text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 ${submitting ? 'opacity-40 cursor-not-allowed' : ''
+                            }`}
                         aria-label="Закрыть"
+                        title={submitting ? 'Дождитесь завершения операции' : 'Закрыть'}
                     >
                         <FiX className="w-6 h-6" />
                     </button>
                 </div>
 
-                {/* Вкладки */}
-                <div className="px-5 pt-4">
+                {/* Вкладки. flex-shrink-0 — не сжимаются. */}
+                <div className="flex-shrink-0 px-5 pt-4">
                     <div className="flex items-center gap-1 border-b border-gray-200 dark:border-gray-700">
                         <button
                             type="button"
                             onClick={() => setTab('period')}
                             className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px flex items-center gap-2 ${tab === 'period'
-                                    ? 'border-green-500 text-green-600 dark:text-green-400'
-                                    : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+                                ? 'border-green-500 text-green-600 dark:text-green-400'
+                                : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
                                 }`}
                         >
                             <FiEdit3 className="w-4 h-4" />
@@ -863,8 +1339,8 @@ const ZeroInjuryModal: React.FC<ZeroInjuryModalProps> = ({
                             type="button"
                             onClick={() => setTab('history')}
                             className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px flex items-center gap-2 ${tab === 'history'
-                                    ? 'border-green-500 text-green-600 dark:text-green-400'
-                                    : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+                                ? 'border-green-500 text-green-600 dark:text-green-400'
+                                : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
                                 }`}
                         >
                             <FiList className="w-4 h-4" />
@@ -889,21 +1365,23 @@ const ZeroInjuryModal: React.FC<ZeroInjuryModalProps> = ({
 
                   Для обычного пользователя этот блок не рендерится вовсе —
                   никакого disabled-состояния, никакого визуального шума.
+
+                  flex-shrink-0 — не сжимается, всегда виден под вкладками.
                 */}
                 {isSafetyEngineer && tab === 'period' && mode !== 'create' && (
-                    <div className="px-5 pt-4">
+                    <div className="flex-shrink-0 px-5 pt-4">
                         <button
                             type="button"
                             onClick={handleStartNew}
-                            disabled={!status.canStartNew}
+                            disabled={!status.canStartNew || submitting}
                             title={
                                 !status.canStartNew
                                     ? 'Дождитесь завершения текущего периода'
                                     : 'Начать новый период'
                             }
-                            className={`w-full py-2.5 rounded-xl border-2 border-dashed flex items-center justify-center gap-2 transition-colors ${status.canStartNew
-                                    ? 'border-blue-400 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20'
-                                    : 'border-gray-300 dark:border-gray-600 text-gray-400 cursor-not-allowed'
+                            className={`w-full py-2.5 rounded-xl border-2 border-dashed flex items-center justify-center gap-2 transition-colors ${status.canStartNew && !submitting
+                                ? 'border-blue-400 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20'
+                                : 'border-gray-300 dark:border-gray-600 text-gray-400 cursor-not-allowed'
                                 }`}
                         >
                             <FiEdit3 className="w-4 h-4" />
@@ -912,16 +1390,12 @@ const ZeroInjuryModal: React.FC<ZeroInjuryModalProps> = ({
                     </div>
                 )}
 
-                {/* Содержимое активной вкладки */}
-                <div className="flex-1 overflow-y-auto p-5 custom-scrollbar">
-                    {tab === 'period' && (
-                        <>
-                            {(mode === 'create' || mode === 'edit') && renderForm()}
-                            {mode === 'view' && renderView()}
-                        </>
-                    )}
-                    {tab === 'history' && renderHistoryTab()}
-                </div>
+                {/* Контент активной вкладки. Каждая из трёх веток сама
+                    управляет своим скроллом и футером — см. подробные
+                    комментарии в renderForm / renderView / renderHistoryTab. */}
+                {tab === 'period' && (mode === 'create' || mode === 'edit') && renderForm()}
+                {tab === 'period' && mode === 'view' && renderView()}
+                {tab === 'history' && renderHistoryTab()}
             </div>
         </div>
     );
